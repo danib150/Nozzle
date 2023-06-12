@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zach Brown <zach.brown@destroystokyo.com>
+Date: Sat, 7 Mar 2015 20:27:02 -0600
+Subject: [PATCH] Configurable damage multiplier for PvP blocking
+
+
+diff --git a/src/main/java/net/minecraft/server/EntityHuman.java b/src/main/java/net/minecraft/server/EntityHuman.java
+index eb54e7f510514e56eb06a21f9d6dd257a5f66722..e705b869925598f69c60cb5c67df648abaa3ba4a 100644
+--- a/src/main/java/net/minecraft/server/EntityHuman.java
++++ b/src/main/java/net/minecraft/server/EntityHuman.java
+@@ -861,7 +861,7 @@ public abstract class EntityHuman extends EntityLiving {
+         // CraftBukkit end
+         if (!this.isInvulnerable(damagesource)) {
+             if (!damagesource.ignoresArmor() && this.isBlocking() && f > 0.0F) {
+-                f = (1.0F + f) * 0.5F;
++                f = (1.0F + f) * this.world.paperSpigotConfig.playerBlockingDamageMultiplier; // PaperSpigot - Configurable damage multiplier for blocking;
+             }
+ 
+             f = this.applyArmorModifier(damagesource, f);
+diff --git a/src/main/java/org/github/paperspigot/PaperSpigotWorldConfig.java b/src/main/java/org/github/paperspigot/PaperSpigotWorldConfig.java
+index bbaca2e07b92ca735acf26426d714c6d2f107d80..38192ad6dd327d02e5942d89ca7a48b48597b8c7 100644
+--- a/src/main/java/org/github/paperspigot/PaperSpigotWorldConfig.java
++++ b/src/main/java/org/github/paperspigot/PaperSpigotWorldConfig.java
+@@ -90,4 +90,11 @@ public class PaperSpigotWorldConfig
+         squidMaxSpawnHeight = getDouble( "squid-spawn-height.maximum", 63.0D );
+         log( "Squids will spawn between Y: " + squidMinSpawnHeight + " and Y: " + squidMaxSpawnHeight );
+     }
++
++    public float playerBlockingDamageMultiplier;
++    private void playerBlockingDamageMultiplier()
++    {
++        playerBlockingDamageMultiplier = getFloat( "player-blocking-damage-multiplier", 0.5F );
++        log( "Player blocking damage multiplier set to " + playerBlockingDamageMultiplier );
++    }
+ }

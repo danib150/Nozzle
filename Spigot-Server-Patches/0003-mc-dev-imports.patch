@@ -1,0 +1,291 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zach Brown <zach.brown@destroystokyo.com>
+Date: Mon, 25 May 2015 15:37:00 -0500
+Subject: [PATCH] mc-dev imports
+
+
+diff --git a/src/main/java/net/minecraft/server/BiomeBase.java b/src/main/java/net/minecraft/server/BiomeBase.java
+index c01a4009d9644288823f9f317d0213d5badc2c22..b1ae67ac68277a491bef2ceb719339adb8d76236 100644
+--- a/src/main/java/net/minecraft/server/BiomeBase.java
++++ b/src/main/java/net/minecraft/server/BiomeBase.java
+@@ -14,19 +14,19 @@ import org.apache.logging.log4j.Logger;
+ public abstract class BiomeBase {
+ 
+     private static final Logger aD = LogManager.getLogger();
+-    protected static final BiomeBase.BiomeTemperature a = new BiomeBase.BiomeTemperature(0.1F, 0.2F);
+-    protected static final BiomeBase.BiomeTemperature b = new BiomeBase.BiomeTemperature(-0.5F, 0.0F);
+-    protected static final BiomeBase.BiomeTemperature c = new BiomeBase.BiomeTemperature(-1.0F, 0.1F);
+-    protected static final BiomeBase.BiomeTemperature d = new BiomeBase.BiomeTemperature(-1.8F, 0.1F);
+-    protected static final BiomeBase.BiomeTemperature e = new BiomeBase.BiomeTemperature(0.125F, 0.05F);
+-    protected static final BiomeBase.BiomeTemperature f = new BiomeBase.BiomeTemperature(0.2F, 0.2F);
+-    protected static final BiomeBase.BiomeTemperature g = new BiomeBase.BiomeTemperature(0.45F, 0.3F);
+-    protected static final BiomeBase.BiomeTemperature h = new BiomeBase.BiomeTemperature(1.5F, 0.025F);
+-    protected static final BiomeBase.BiomeTemperature i = new BiomeBase.BiomeTemperature(1.0F, 0.5F);
+-    protected static final BiomeBase.BiomeTemperature j = new BiomeBase.BiomeTemperature(0.0F, 0.025F);
+-    protected static final BiomeBase.BiomeTemperature k = new BiomeBase.BiomeTemperature(0.1F, 0.8F);
+-    protected static final BiomeBase.BiomeTemperature l = new BiomeBase.BiomeTemperature(0.2F, 0.3F);
+-    protected static final BiomeBase.BiomeTemperature m = new BiomeBase.BiomeTemperature(-0.2F, 0.1F);
++    protected static final BiomeTemperature a = new BiomeTemperature(0.1F, 0.2F);
++    protected static final BiomeTemperature b = new BiomeTemperature(-0.5F, 0.0F);
++    protected static final BiomeTemperature c = new BiomeTemperature(-1.0F, 0.1F);
++    protected static final BiomeTemperature d = new BiomeTemperature(-1.8F, 0.1F);
++    protected static final BiomeTemperature e = new BiomeTemperature(0.125F, 0.05F);
++    protected static final BiomeTemperature f = new BiomeTemperature(0.2F, 0.2F);
++    protected static final BiomeTemperature g = new BiomeTemperature(0.45F, 0.3F);
++    protected static final BiomeTemperature h = new BiomeTemperature(1.5F, 0.025F);
++    protected static final BiomeTemperature i = new BiomeTemperature(1.0F, 0.5F);
++    protected static final BiomeTemperature j = new BiomeTemperature(0.0F, 0.025F);
++    protected static final BiomeTemperature k = new BiomeTemperature(0.1F, 0.8F);
++    protected static final BiomeTemperature l = new BiomeTemperature(0.2F, 0.3F);
++    protected static final BiomeTemperature m = new BiomeTemperature(-0.2F, 0.1F);
+     private static final BiomeBase[] biomes = new BiomeBase[256];
+     public static final Set<BiomeBase> n = Sets.newHashSet();
+     public static final Map<String, BiomeBase> o = Maps.newHashMap();
+@@ -86,10 +86,10 @@ public abstract class BiomeBase {
+     public float humidity;
+     public int ar;
+     public BiomeDecorator as;
+-    protected List<BiomeBase.BiomeMeta> at;
+-    protected List<BiomeBase.BiomeMeta> au;
+-    protected List<BiomeBase.BiomeMeta> av;
+-    protected List<BiomeBase.BiomeMeta> aw;
++    protected List<BiomeMeta> at;
++    protected List<BiomeMeta> au;
++    protected List<BiomeMeta> av;
++    protected List<BiomeMeta> aw;
+     protected boolean ax;
+     protected boolean ay;
+     public final int id;
+@@ -117,20 +117,20 @@ public abstract class BiomeBase {
+         this.id = i;
+         BiomeBase.biomes[i] = this;
+         this.as = this.a();
+-        this.au.add(new BiomeBase.BiomeMeta(EntitySheep.class, 12, 4, 4));
+-        this.au.add(new BiomeBase.BiomeMeta(EntityRabbit.class, 10, 3, 3));
+-        this.au.add(new BiomeBase.BiomeMeta(EntityPig.class, 10, 4, 4));
+-        this.au.add(new BiomeBase.BiomeMeta(EntityChicken.class, 10, 4, 4));
+-        this.au.add(new BiomeBase.BiomeMeta(EntityCow.class, 8, 4, 4));
+-        this.at.add(new BiomeBase.BiomeMeta(EntitySpider.class, 100, 4, 4));
+-        this.at.add(new BiomeBase.BiomeMeta(EntityZombie.class, 100, 4, 4));
+-        this.at.add(new BiomeBase.BiomeMeta(EntitySkeleton.class, 100, 4, 4));
+-        this.at.add(new BiomeBase.BiomeMeta(EntityCreeper.class, 100, 4, 4));
+-        this.at.add(new BiomeBase.BiomeMeta(EntitySlime.class, 100, 4, 4));
+-        this.at.add(new BiomeBase.BiomeMeta(EntityEnderman.class, 10, 1, 4));
+-        this.at.add(new BiomeBase.BiomeMeta(EntityWitch.class, 5, 1, 1));
+-        this.av.add(new BiomeBase.BiomeMeta(EntitySquid.class, 10, 4, 4));
+-        this.aw.add(new BiomeBase.BiomeMeta(EntityBat.class, 10, 8, 8));
++        this.au.add(new BiomeMeta(EntitySheep.class, 12, 4, 4));
++        this.au.add(new BiomeMeta(EntityRabbit.class, 10, 3, 3));
++        this.au.add(new BiomeMeta(EntityPig.class, 10, 4, 4));
++        this.au.add(new BiomeMeta(EntityChicken.class, 10, 4, 4));
++        this.au.add(new BiomeMeta(EntityCow.class, 8, 4, 4));
++        this.at.add(new BiomeMeta(EntitySpider.class, 100, 4, 4));
++        this.at.add(new BiomeMeta(EntityZombie.class, 100, 4, 4));
++        this.at.add(new BiomeMeta(EntitySkeleton.class, 100, 4, 4));
++        this.at.add(new BiomeMeta(EntityCreeper.class, 100, 4, 4));
++        this.at.add(new BiomeMeta(EntitySlime.class, 100, 4, 4));
++        this.at.add(new BiomeMeta(EntityEnderman.class, 10, 1, 4));
++        this.at.add(new BiomeMeta(EntityWitch.class, 5, 1, 1));
++        this.av.add(new BiomeMeta(EntitySquid.class, 10, 4, 4));
++        this.aw.add(new BiomeMeta(EntityBat.class, 10, 8, 8));
+     }
+ 
+     protected BiomeDecorator a() {
+@@ -147,7 +147,7 @@ public abstract class BiomeBase {
+         }
+     }
+ 
+-    protected final BiomeBase a(BiomeBase.BiomeTemperature biomebase_biometemperature) {
++    protected final BiomeBase a(BiomeTemperature biomebase_biometemperature) {
+         this.an = biomebase_biometemperature.a;
+         this.ao = biomebase_biometemperature.b;
+         return this;
+@@ -206,8 +206,8 @@ public abstract class BiomeBase {
+         return this;
+     }
+ 
+-    public List<BiomeBase.BiomeMeta> getMobs(EnumCreatureType enumcreaturetype) {
+-        switch (BiomeBase.SyntheticClass_1.switchMap[enumcreaturetype.ordinal()]) {
++    public List<BiomeMeta> getMobs(EnumCreatureType enumcreaturetype) {
++        switch (SyntheticClass_1.switchMap[enumcreaturetype.ordinal()]) {
+         case 1:
+             return this.at;
+ 
+@@ -343,8 +343,8 @@ public abstract class BiomeBase {
+         return biomebase == this ? true : (biomebase == null ? false : this.l() == biomebase.l());
+     }
+ 
+-    public BiomeBase.EnumTemperature m() {
+-        return (double) this.temperature < 0.2D ? BiomeBase.EnumTemperature.COLD : ((double) this.temperature < 1.0D ? BiomeBase.EnumTemperature.MEDIUM : BiomeBase.EnumTemperature.WARM);
++    public EnumTemperature m() {
++        return (double) this.temperature < 0.2D ? EnumTemperature.COLD : ((double) this.temperature < 1.0D ? EnumTemperature.MEDIUM : EnumTemperature.WARM);
+     }
+ 
+     public static BiomeBase[] getBiomes() {
+@@ -421,25 +421,25 @@ public abstract class BiomeBase {
+ 
+         static {
+             try {
+-                BiomeBase.SyntheticClass_1.switchMap[EnumCreatureType.MONSTER.ordinal()] = 1;
++                SyntheticClass_1.switchMap[EnumCreatureType.MONSTER.ordinal()] = 1;
+             } catch (NoSuchFieldError nosuchfielderror) {
+                 ;
+             }
+ 
+             try {
+-                BiomeBase.SyntheticClass_1.switchMap[EnumCreatureType.CREATURE.ordinal()] = 2;
++                SyntheticClass_1.switchMap[EnumCreatureType.CREATURE.ordinal()] = 2;
+             } catch (NoSuchFieldError nosuchfielderror1) {
+                 ;
+             }
+ 
+             try {
+-                BiomeBase.SyntheticClass_1.switchMap[EnumCreatureType.WATER_CREATURE.ordinal()] = 3;
++                SyntheticClass_1.switchMap[EnumCreatureType.WATER_CREATURE.ordinal()] = 3;
+             } catch (NoSuchFieldError nosuchfielderror2) {
+                 ;
+             }
+ 
+             try {
+-                BiomeBase.SyntheticClass_1.switchMap[EnumCreatureType.AMBIENT.ordinal()] = 4;
++                SyntheticClass_1.switchMap[EnumCreatureType.AMBIENT.ordinal()] = 4;
+             } catch (NoSuchFieldError nosuchfielderror3) {
+                 ;
+             }
+@@ -475,8 +475,8 @@ public abstract class BiomeBase {
+             this.b = f1;
+         }
+ 
+-        public BiomeBase.BiomeTemperature a() {
+-            return new BiomeBase.BiomeTemperature(this.a * 0.8F, this.b * 0.6F);
++        public BiomeTemperature a() {
++            return new BiomeTemperature(this.a * 0.8F, this.b * 0.6F);
+         }
+     }
+ 
+diff --git a/src/main/java/net/minecraft/server/EntityMinecartFurnace.java b/src/main/java/net/minecraft/server/EntityMinecartFurnace.java
+index 67405031474a1e738d036481fb44481faae7e4dc..55f04b4745cb29f4bc326c6955e4dba5fbdce57b 100644
+--- a/src/main/java/net/minecraft/server/EntityMinecartFurnace.java
++++ b/src/main/java/net/minecraft/server/EntityMinecartFurnace.java
+@@ -14,8 +14,8 @@ public class EntityMinecartFurnace extends EntityMinecartAbstract {
+         super(world, d0, d1, d2);
+     }
+ 
+-    public EntityMinecartAbstract.EnumMinecartType s() {
+-        return EntityMinecartAbstract.EnumMinecartType.FURNACE;
++    public EnumMinecartType s() {
++        return EnumMinecartType.FURNACE;
+     }
+ 
+     protected void h() {
+diff --git a/src/main/java/net/minecraft/server/PacketLoginInEncryptionBegin.java b/src/main/java/net/minecraft/server/PacketLoginInEncryptionBegin.java
+index 6385ab2d009f255f7d0f1f00708c7c5648765722..1d2e8556d6d3a38f2eb0e5fdea882a84abc4bd70 100644
+--- a/src/main/java/net/minecraft/server/PacketLoginInEncryptionBegin.java
++++ b/src/main/java/net/minecraft/server/PacketLoginInEncryptionBegin.java
+@@ -32,8 +32,4 @@ public class PacketLoginInEncryptionBegin implements Packet<PacketLoginInListene
+     public byte[] b(PrivateKey privatekey) {
+         return privatekey == null ? this.b : MinecraftEncryption.b(privatekey, this.b);
+     }
+-
+-    public void a(PacketListener packetlistener) {
+-        this.a((PacketLoginInListener) packetlistener);
+-    }
+ }
+diff --git a/src/main/java/net/minecraft/server/PacketPlayOutTitle.java b/src/main/java/net/minecraft/server/PacketPlayOutTitle.java
+index 9fc48ad4da73f168d86835cd3f3524f28fa24649..27112986a73384048674417e80819b79a4701d8d 100644
+--- a/src/main/java/net/minecraft/server/PacketPlayOutTitle.java
++++ b/src/main/java/net/minecraft/server/PacketPlayOutTitle.java
+@@ -4,7 +4,7 @@ import java.io.IOException;
+ 
+ public class PacketPlayOutTitle implements Packet<PacketListenerPlayOut> {
+ 
+-    private PacketPlayOutTitle.EnumTitleAction a;
++    private EnumTitleAction a;
+     private IChatBaseComponent b;
+     private int c;
+     private int d;
+@@ -12,15 +12,15 @@ public class PacketPlayOutTitle implements Packet<PacketListenerPlayOut> {
+ 
+     public PacketPlayOutTitle() {}
+ 
+-    public PacketPlayOutTitle(PacketPlayOutTitle.EnumTitleAction packetplayouttitle_enumtitleaction, IChatBaseComponent ichatbasecomponent) {
++    public PacketPlayOutTitle(EnumTitleAction packetplayouttitle_enumtitleaction, IChatBaseComponent ichatbasecomponent) {
+         this(packetplayouttitle_enumtitleaction, ichatbasecomponent, -1, -1, -1);
+     }
+ 
+     public PacketPlayOutTitle(int i, int j, int k) {
+-        this(PacketPlayOutTitle.EnumTitleAction.TIMES, (IChatBaseComponent) null, i, j, k);
++        this(EnumTitleAction.TIMES, (IChatBaseComponent) null, i, j, k);
+     }
+ 
+-    public PacketPlayOutTitle(PacketPlayOutTitle.EnumTitleAction packetplayouttitle_enumtitleaction, IChatBaseComponent ichatbasecomponent, int i, int j, int k) {
++    public PacketPlayOutTitle(EnumTitleAction packetplayouttitle_enumtitleaction, IChatBaseComponent ichatbasecomponent, int i, int j, int k) {
+         this.a = packetplayouttitle_enumtitleaction;
+         this.b = ichatbasecomponent;
+         this.c = i;
+@@ -29,12 +29,12 @@ public class PacketPlayOutTitle implements Packet<PacketListenerPlayOut> {
+     }
+ 
+     public void a(PacketDataSerializer packetdataserializer) throws IOException {
+-        this.a = (PacketPlayOutTitle.EnumTitleAction) packetdataserializer.a(PacketPlayOutTitle.EnumTitleAction.class);
+-        if (this.a == PacketPlayOutTitle.EnumTitleAction.TITLE || this.a == PacketPlayOutTitle.EnumTitleAction.SUBTITLE) {
++        this.a = (EnumTitleAction) packetdataserializer.a(EnumTitleAction.class);
++        if (this.a == EnumTitleAction.TITLE || this.a == EnumTitleAction.SUBTITLE) {
+             this.b = packetdataserializer.d();
+         }
+ 
+-        if (this.a == PacketPlayOutTitle.EnumTitleAction.TIMES) {
++        if (this.a == EnumTitleAction.TIMES) {
+             this.c = packetdataserializer.readInt();
+             this.d = packetdataserializer.readInt();
+             this.e = packetdataserializer.readInt();
+@@ -44,11 +44,11 @@ public class PacketPlayOutTitle implements Packet<PacketListenerPlayOut> {
+ 
+     public void b(PacketDataSerializer packetdataserializer) throws IOException {
+         packetdataserializer.a((Enum) this.a);
+-        if (this.a == PacketPlayOutTitle.EnumTitleAction.TITLE || this.a == PacketPlayOutTitle.EnumTitleAction.SUBTITLE) {
++        if (this.a == EnumTitleAction.TITLE || this.a == EnumTitleAction.SUBTITLE) {
+             packetdataserializer.a(this.b);
+         }
+ 
+-        if (this.a == PacketPlayOutTitle.EnumTitleAction.TIMES) {
++        if (this.a == EnumTitleAction.TIMES) {
+             packetdataserializer.writeInt(this.c);
+             packetdataserializer.writeInt(this.d);
+             packetdataserializer.writeInt(this.e);
+@@ -70,29 +70,29 @@ public class PacketPlayOutTitle implements Packet<PacketListenerPlayOut> {
+ 
+         private EnumTitleAction() {}
+ 
+-        public static PacketPlayOutTitle.EnumTitleAction a(String s) {
+-            PacketPlayOutTitle.EnumTitleAction[] apacketplayouttitle_enumtitleaction = values();
++        public static EnumTitleAction a(String s) {
++            EnumTitleAction[] apacketplayouttitle_enumtitleaction = values();
+             int i = apacketplayouttitle_enumtitleaction.length;
+ 
+             for (int j = 0; j < i; ++j) {
+-                PacketPlayOutTitle.EnumTitleAction packetplayouttitle_enumtitleaction = apacketplayouttitle_enumtitleaction[j];
++                EnumTitleAction packetplayouttitle_enumtitleaction = apacketplayouttitle_enumtitleaction[j];
+ 
+                 if (packetplayouttitle_enumtitleaction.name().equalsIgnoreCase(s)) {
+                     return packetplayouttitle_enumtitleaction;
+                 }
+             }
+ 
+-            return PacketPlayOutTitle.EnumTitleAction.TITLE;
++            return EnumTitleAction.TITLE;
+         }
+ 
+         public static String[] a() {
+             String[] astring = new String[values().length];
+             int i = 0;
+-            PacketPlayOutTitle.EnumTitleAction[] apacketplayouttitle_enumtitleaction = values();
++            EnumTitleAction[] apacketplayouttitle_enumtitleaction = values();
+             int j = apacketplayouttitle_enumtitleaction.length;
+ 
+             for (int k = 0; k < j; ++k) {
+-                PacketPlayOutTitle.EnumTitleAction packetplayouttitle_enumtitleaction = apacketplayouttitle_enumtitleaction[k];
++                EnumTitleAction packetplayouttitle_enumtitleaction = apacketplayouttitle_enumtitleaction[k];
+ 
+                 astring[i++] = packetplayouttitle_enumtitleaction.name().toLowerCase();
+             }

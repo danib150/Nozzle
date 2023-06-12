@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zach Brown <zach.brown@destroystokyo.com>
+Date: Sat, 7 Mar 2015 20:41:55 -0600
+Subject: [PATCH] Configurable baby zombie movement speed
+
+
+diff --git a/src/main/java/net/minecraft/server/EntityZombie.java b/src/main/java/net/minecraft/server/EntityZombie.java
+index 1a8d3d87368475ec0b9b9ecd01d04e762cdc1e4f..6d3b002bc768e32f4cc95c9f37b274baf5dc4599 100644
+--- a/src/main/java/net/minecraft/server/EntityZombie.java
++++ b/src/main/java/net/minecraft/server/EntityZombie.java
+@@ -16,7 +16,7 @@ public class EntityZombie extends EntityMonster {
+ 
+     protected static final IAttribute a = (new AttributeRanged((IAttribute) null, "zombie.spawnReinforcements", 0.0D, 0.0D, 1.0D)).a("Spawn Reinforcements Chance");
+     private static final UUID b = UUID.fromString("B9766B59-9566-4402-BC1F-2EE2A276D836");
+-    private static final AttributeModifier c = new AttributeModifier(EntityZombie.b, "Baby speed boost", 0.5D, 1);
++    private static final AttributeModifier c = new AttributeModifier(EntityZombie.b, "Baby speed boost", org.github.paperspigot.PaperSpigotConfig.babyZombieMovementSpeed, 1); // PaperSpigot - Configurable baby zombie movement speed
+     private final PathfinderGoalBreakDoor bm = new PathfinderGoalBreakDoor(this);
+     private int bn;
+     private boolean bo = false;
+diff --git a/src/main/java/org/github/paperspigot/PaperSpigotConfig.java b/src/main/java/org/github/paperspigot/PaperSpigotConfig.java
+index a08688fc74adc1b5a5b4263068516f364fb56a99..4daf77efcffbfa2ead6974fa67139a9d58f3a748 100644
+--- a/src/main/java/org/github/paperspigot/PaperSpigotConfig.java
++++ b/src/main/java/org/github/paperspigot/PaperSpigotConfig.java
+@@ -138,4 +138,10 @@ public class PaperSpigotConfig
+         config.addDefault( path, def );
+         return config.getString( path, config.getString( path ) );
+     }
++
++    public static double babyZombieMovementSpeed;
++    private static void babyZombieMovementSpeed()
++    {
++        babyZombieMovementSpeed = getDouble( "settings.baby-zombie-movement-speed", 0.5D ); // Player moves at 0.1F, for reference
++    }
+ }

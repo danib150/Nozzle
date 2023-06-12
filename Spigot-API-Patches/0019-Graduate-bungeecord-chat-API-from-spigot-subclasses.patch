@@ -1,0 +1,91 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Zach Brown <zach.brown@destroystokyo.com>
+Date: Tue, 16 Feb 2016 19:15:30 -0600
+Subject: [PATCH] Graduate bungeecord chat API from spigot subclasses
+
+
+diff --git a/src/main/java/org/bukkit/Bukkit.java b/src/main/java/org/bukkit/Bukkit.java
+index f0e1b99b2eba75c8ac90ac8cdf4e769247100448..8fbc82833d16138914e379fef9a38c206d9cc07b 100644
+--- a/src/main/java/org/bukkit/Bukkit.java
++++ b/src/main/java/org/bukkit/Bukkit.java
+@@ -292,6 +292,26 @@ public final class Bukkit {
+         return server.broadcastMessage(message);
+     }
+ 
++    // Paper start
++    /**
++     * Sends the component to the player
++     *
++     * @param component the components to send
++     */
++    public static void broadcast(net.md_5.bungee.api.chat.BaseComponent component) {
++        server.broadcast(component);
++    }
++
++    /**
++     * Sends an array of components as a single message to the player
++     *
++     * @param components the components to send
++     */
++    public static void broadcast(net.md_5.bungee.api.chat.BaseComponent... components) {
++        server.broadcast(components);
++    }
++    // Paper end
++
+     /**
+      * Gets the name of the update folder. The update folder is used to safely
+      * update plugins at the right moment on a plugin load.
+diff --git a/src/main/java/org/bukkit/Server.java b/src/main/java/org/bukkit/Server.java
+index 316336d94fcd4e257d10e427634e6ea43f0ae5bd..1b62463a1e18d7e35524e06e791d321d6b3823c0 100644
+--- a/src/main/java/org/bukkit/Server.java
++++ b/src/main/java/org/bukkit/Server.java
+@@ -238,6 +238,22 @@ public interface Server extends PluginMessageRecipient {
+      */
+     public int broadcastMessage(String message);
+ 
++    // Paper start
++    /**
++     * Sends the component to the player
++     *
++     * @param component the components to send
++     */
++    public void broadcast(net.md_5.bungee.api.chat.BaseComponent component);
++
++    /**
++     * Sends an array of components as a single message to the player
++     *
++     * @param components the components to send
++     */
++    public void broadcast(net.md_5.bungee.api.chat.BaseComponent... components);
++    // Paper end
++
+     /**
+      * Gets the name of the update folder. The update folder is used to safely
+      * update plugins at the right moment on a plugin load.
+diff --git a/src/main/java/org/bukkit/entity/Player.java b/src/main/java/org/bukkit/entity/Player.java
+index c0ebe6551941be5fbe54efc426600f3ff2511127..9ebfa4743f3d03b1d0c4b10c92ada763301e4a81 100644
+--- a/src/main/java/org/bukkit/entity/Player.java
++++ b/src/main/java/org/bukkit/entity/Player.java
+@@ -330,6 +330,22 @@ public interface Player extends HumanEntity, Conversable, CommandSender, Offline
+      */
+     public void sendMap(MapView map);
+ 
++    // Paper start
++    /**
++     * Sends the component to the player
++     *
++     * @param component the components to send
++     */
++    public void sendMessage(net.md_5.bungee.api.chat.BaseComponent component);
++
++    /**
++     * Sends an array of components as a single message to the player
++     *
++     * @param components the components to send
++     */
++    public void sendMessage(net.md_5.bungee.api.chat.BaseComponent... components);
++    // Paper end
++
+     /**
+      * Forces an update of the player's entire inventory.
+      *

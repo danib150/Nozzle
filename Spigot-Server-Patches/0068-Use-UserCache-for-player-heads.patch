@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Techcable <Techcable@outlook.com>
+Date: Fri, 7 Aug 2015 19:31:31 -0700
+Subject: [PATCH] Use UserCache for player heads
+
+
+diff --git a/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaSkull.java b/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaSkull.java
+index 2abca0cae56941c6902a783790d92c47b0ebfebb..55bbad76b6ae5dab6f356cfb756e6b434422a241 100644
+--- a/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaSkull.java
++++ b/src/main/java/org/bukkit/craftbukkit/inventory/CraftMetaSkull.java
+@@ -6,6 +6,11 @@ import net.minecraft.server.GameProfileSerializer;
+ import net.minecraft.server.NBTBase;
+ import net.minecraft.server.NBTTagCompound;
+ 
++// PaperSpigot start
++import net.minecraft.server.EntityPlayer;
++import net.minecraft.server.MinecraftServer;
++// PaperSpigot end
++
+ import org.bukkit.Material;
+ import org.bukkit.configuration.serialization.DelegateDeserialization;
+ import org.bukkit.craftbukkit.inventory.CraftMetaItem.SerializableMeta;
+@@ -132,7 +137,10 @@ class CraftMetaSkull extends CraftMetaItem implements SkullMeta {
+         if (name == null) {
+             profile = null;
+         } else {
+-            profile = new GameProfile(null, name);
++            // PaperSpigot start - Check usercache if the player is online
++            EntityPlayer player = MinecraftServer.getServer().getPlayerList().getPlayer(name);
++            profile = player != null ? player.getProfile() : new GameProfile(null, name);
++            // PaperSpigot end
+         }
+ 
+         return true;

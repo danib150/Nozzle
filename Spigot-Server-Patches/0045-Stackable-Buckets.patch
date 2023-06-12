@@ -1,0 +1,171 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Byteflux <byte@byteflux.net>
+Date: Mon, 1 Jun 2015 20:45:24 -0700
+Subject: [PATCH] Stackable Buckets
+
+
+diff --git a/src/main/java/net/minecraft/server/ItemBucket.java b/src/main/java/net/minecraft/server/ItemBucket.java
+index 4d362aef4dbec273f50ff892d0edbcf8a9155b63..b62ea42fc40f0e2000f7f408b3f4d9424b1be4c1 100644
+--- a/src/main/java/net/minecraft/server/ItemBucket.java
++++ b/src/main/java/net/minecraft/server/ItemBucket.java
+@@ -7,6 +7,8 @@ import org.bukkit.event.player.PlayerBucketEmptyEvent;
+ import org.bukkit.event.player.PlayerBucketFillEvent;
+ // CraftBukkit end
+ 
++import org.github.paperspigot.PaperSpigotConfig; // PaperSpigot
++
+ public class ItemBucket extends Item {
+ 
+     private Block a;
+@@ -93,6 +95,18 @@ public class ItemBucket extends Item {
+ 
+                     if (this.a(world, blockposition1) && !entityhuman.abilities.canInstantlyBuild) {
+                         entityhuman.b(StatisticList.USE_ITEM_COUNT[Item.getId(this)]);
++                        // PaperSpigot start - Stackable Buckets
++                        if ((this == Items.LAVA_BUCKET && PaperSpigotConfig.stackableLavaBuckets) ||
++                                (this == Items.WATER_BUCKET && PaperSpigotConfig.stackableWaterBuckets)) {
++                            if (--itemstack.count <= 0) {
++                                return CraftItemStack.asNMSCopy(event.getItemStack());
++                            }
++                            if (!entityhuman.inventory.pickup(CraftItemStack.asNMSCopy(event.getItemStack()))) {
++                                entityhuman.drop(CraftItemStack.asNMSCopy(event.getItemStack()), false);
++                            }
++                            return itemstack;
++                        }
++                        // PaperSpigot end
+                         return CraftItemStack.asNMSCopy(event.getItemStack()); // CraftBukkit
+                     }
+                 }
+diff --git a/src/main/java/net/minecraft/server/ItemMilkBucket.java b/src/main/java/net/minecraft/server/ItemMilkBucket.java
+index 91ea70d0663fb770c6bf980ab79b242d5b906814..8e3d77e050da3b9f6b12bba62fb0d1a2350fa0d8 100644
+--- a/src/main/java/net/minecraft/server/ItemMilkBucket.java
++++ b/src/main/java/net/minecraft/server/ItemMilkBucket.java
+@@ -1,5 +1,7 @@
+ package net.minecraft.server;
+ 
++import org.github.paperspigot.PaperSpigotConfig; // PaperSpigot
++
+ public class ItemMilkBucket extends Item {
+ 
+     public ItemMilkBucket() {
+@@ -17,6 +19,15 @@ public class ItemMilkBucket extends Item {
+         }
+ 
+         entityhuman.b(StatisticList.USE_ITEM_COUNT[Item.getId(this)]);
++        // PaperSpigot start - Stackable Buckets
++        if (PaperSpigotConfig.stackableMilkBuckets) {
++            if (itemstack.count <= 0) {
++                return new ItemStack(Items.BUCKET);
++            } else if (!entityhuman.inventory.pickup(new ItemStack(Items.BUCKET))) {
++                entityhuman.drop(new ItemStack(Items.BUCKET), false);
++            }
++        }
++        // PaperSpigot end
+         return itemstack.count <= 0 ? new ItemStack(Items.BUCKET) : itemstack;
+     }
+ 
+diff --git a/src/main/java/net/minecraft/server/PlayerConnection.java b/src/main/java/net/minecraft/server/PlayerConnection.java
+index 4d5ef49de00e05ce9dac977e937c3e4a4951d0cc..2ab01a1fae2fa50ec2b1c14d8926eebd7369eb63 100644
+--- a/src/main/java/net/minecraft/server/PlayerConnection.java
++++ b/src/main/java/net/minecraft/server/PlayerConnection.java
+@@ -62,6 +62,8 @@ import org.bukkit.inventory.InventoryView;
+ import org.bukkit.util.NumberConversions;
+ // CraftBukkit end
+ 
++import org.github.paperspigot.PaperSpigotConfig; // PaperSpigot
++
+ public class PlayerConnection implements PacketListenerPlayIn, IUpdatePlayerListBox {
+ 
+     private static final Logger c = LogManager.getLogger();
+@@ -1634,6 +1636,19 @@ public class PlayerConnection implements PacketListenerPlayIn, IUpdatePlayerList
+                         case ALLOW:
+                         case DEFAULT:
+                             itemstack = this.player.activeContainer.clickItem(packetplayinwindowclick.b(), packetplayinwindowclick.c(), packetplayinwindowclick.f(), this.player);
++                            // PaperSpigot start - Stackable Buckets
++                            if (itemstack != null &&
++                                    ((itemstack.getItem() == Items.LAVA_BUCKET && PaperSpigotConfig.stackableLavaBuckets) ||
++                                            (itemstack.getItem() == Items.WATER_BUCKET && PaperSpigotConfig.stackableWaterBuckets) ||
++                                            (itemstack.getItem() == Items.MILK_BUCKET && PaperSpigotConfig.stackableMilkBuckets))) {
++                                if (action == InventoryAction.MOVE_TO_OTHER_INVENTORY) {
++                                    this.player.updateInventory(this.player.activeContainer);
++                                } else {
++                                    this.player.playerConnection.sendPacket(new PacketPlayOutSetSlot(-1, -1, this.player.inventory.getCarried()));
++                                    this.player.playerConnection.sendPacket(new PacketPlayOutSetSlot(this.player.activeContainer.windowId, packetplayinwindowclick.b(), this.player.activeContainer.getSlot(packetplayinwindowclick.b()).getItem()));
++                                }
++                            }
++                            // PaperSpigot end
+                             break;
+                         case DENY:
+                             /* Needs enum constructor in InventoryAction
+diff --git a/src/main/java/org/github/paperspigot/PaperSpigotConfig.java b/src/main/java/org/github/paperspigot/PaperSpigotConfig.java
+index 778db7e3d87054e2279b0c3fb289ea38be9ddc9d..ea5a427237adbb3af49ab1171bdce6d1f31314d6 100644
+--- a/src/main/java/org/github/paperspigot/PaperSpigotConfig.java
++++ b/src/main/java/org/github/paperspigot/PaperSpigotConfig.java
+@@ -3,14 +3,19 @@ package org.github.paperspigot;
+ import com.google.common.base.Throwables;
+ import java.io.File;
+ import java.io.IOException;
++import java.lang.reflect.Field;
+ import java.lang.reflect.InvocationTargetException;
+ import java.lang.reflect.Method;
+ import java.lang.reflect.Modifier;
+ import java.util.*;
+ import java.util.logging.Level;
++
++import net.minecraft.server.Item;
++import net.minecraft.server.Items;
+ import net.minecraft.server.MinecraftServer;
+ import org.apache.commons.lang.StringUtils;
+ import org.bukkit.Bukkit;
++import org.bukkit.Material;
+ import org.bukkit.command.Command;
+ import org.bukkit.configuration.InvalidConfigurationException;
+ import org.bukkit.configuration.file.YamlConfiguration;
+@@ -168,4 +173,47 @@ public class PaperSpigotConfig
+         dataValueAllowedItems = new HashSet<Integer>( getList( "data-value-allowed-items", Collections.emptyList() ) );
+         Bukkit.getLogger().info( "Data value allowed items: " + StringUtils.join(dataValueAllowedItems, ", ") );
+     }
++
++    public static boolean stackableLavaBuckets;
++    public static boolean stackableWaterBuckets;
++    public static boolean stackableMilkBuckets;
++    private static void stackableBuckets()
++    {
++        stackableLavaBuckets = getBoolean( "stackable-buckets.lava", false );
++        stackableWaterBuckets = getBoolean( "stackable-buckets.water", false );
++        stackableMilkBuckets = getBoolean( "stackable-buckets.milk", false );
++
++        Field maxStack;
++
++        try {
++            maxStack = Material.class.getDeclaredField("maxStack");
++            maxStack.setAccessible(true);
++
++            Field modifiers = Field.class.getDeclaredField("modifiers");
++            modifiers.setAccessible(true);
++            modifiers.setInt(maxStack, maxStack.getModifiers() & ~Modifier.FINAL);
++        } catch (Exception e) {
++            e.printStackTrace();
++            return;
++        }
++
++        try {
++            if (stackableLavaBuckets) {
++                maxStack.set(Material.LAVA_BUCKET, Material.BUCKET.getMaxStackSize());
++                Items.LAVA_BUCKET.c(Material.BUCKET.getMaxStackSize());
++            }
++
++            if (stackableWaterBuckets) {
++                maxStack.set(Material.WATER_BUCKET, Material.BUCKET.getMaxStackSize());
++                Items.WATER_BUCKET.c(Material.BUCKET.getMaxStackSize());
++            }
++
++            if (stackableMilkBuckets) {
++                maxStack.set(Material.MILK_BUCKET, Material.BUCKET.getMaxStackSize());
++                Items.MILK_BUCKET.c(Material.BUCKET.getMaxStackSize());
++            }
++        } catch (Exception e) {
++            e.printStackTrace();
++        }
++    }
+ }
