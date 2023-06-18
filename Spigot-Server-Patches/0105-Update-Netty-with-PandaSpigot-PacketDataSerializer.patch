@@ -1,0 +1,2792 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Daniele Bruni <67119358+danib150@users.noreply.github.com>
+Date: Mon, 19 Jun 2023 00:28:57 +0200
+Subject: [PATCH] Update Netty with PandaSpigot PacketDataSerializer
+
+
+diff --git a/src/main/java/com/destroystokyo/paper/PaperConfig.java b/src/main/java/com/destroystokyo/paper/PaperConfig.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..4f48e331c6cfa3ed456aa772dfee787581b46c56
+--- /dev/null
++++ b/src/main/java/com/destroystokyo/paper/PaperConfig.java
+@@ -0,0 +1,9 @@
++package com.destroystokyo.paper;
++
++public class PaperConfig {
++    // Dummy PacketLimit class as ViaVersion checks for the existence of this class
++    // in order to know whether the server has a built-in packet limiter.
++    // See: https://github.com/ViaVersion/ViaVersion/blob/823eb1f3927ae01b3d4ba05c8a83ce34eaf87daf/bukkit/src/main/java/com/viaversion/viaversion/bukkit/platform/PaperViaInjector.java#L71-L73
++    public static final class PacketLimit {
++    }
++}
+diff --git a/src/main/java/com/destroystokyo/paper/profile/CraftPlayerProfile.java b/src/main/java/com/destroystokyo/paper/profile/CraftPlayerProfile.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..11d42531ea1659ce8f932bd1b43fd58d20ef9e53
+--- /dev/null
++++ b/src/main/java/com/destroystokyo/paper/profile/CraftPlayerProfile.java
+@@ -0,0 +1,295 @@
++package com.destroystokyo.paper.profile;
++
++import com.google.common.base.Charsets;
++import com.mojang.authlib.GameProfile;
++import com.mojang.authlib.properties.Property;
++import com.mojang.authlib.properties.PropertyMap;
++import net.minecraft.server.MinecraftServer;
++import net.minecraft.server.UserCache;
++import org.apache.commons.lang3.Validate;
++import org.bukkit.craftbukkit.entity.CraftPlayer;
++import org.spigotmc.SpigotConfig;
++
++import javax.annotation.Nonnull;
++import javax.annotation.Nullable;
++import java.util.AbstractSet;
++import java.util.Collection;
++import java.util.Iterator;
++import java.util.Objects;
++import java.util.Set;
++import java.util.UUID;
++
++public class CraftPlayerProfile implements PlayerProfile {
++    private GameProfile profile;
++    private final PropertySet properties = new PropertySet();
++    
++    public CraftPlayerProfile(CraftPlayer player) {
++        this.profile = player.getHandle().getProfile();
++    }
++    
++    public CraftPlayerProfile(UUID id, String name) {
++        this.profile = new GameProfile(id, name);
++    }
++    
++    public CraftPlayerProfile(GameProfile profile) {
++        Validate.notNull(profile, "GameProfile cannot be null!");
++        this.profile = profile;
++    }
++    
++    @Override
++    public boolean hasProperty(String property) {
++        return profile.getProperties().containsKey(property);
++    }
++    
++    @Override
++    public void setProperty(ProfileProperty property) {
++        String name = property.getName();
++        PropertyMap properties = profile.getProperties();
++        properties.removeAll(name);
++        properties.put(name, new Property(name, property.getValue(), property.getSignature()));
++    }
++    
++    public GameProfile getGameProfile() {
++        return profile;
++    }
++    
++    @Nullable
++    @Override
++    public UUID getId() {
++        return profile.getId();
++    }
++    
++    @Override
++    public UUID setId(@Nullable UUID uuid) {
++        GameProfile prev = this.profile;
++        this.profile = new GameProfile(uuid, prev.getName());
++        copyProfileProperties(prev, this.profile);
++        return prev.getId();
++    }
++    
++    @Nullable
++    @Override
++    public String getName() {
++        return profile.getName();
++    }
++    
++    @Override
++    public String setName(@Nullable String name) {
++        GameProfile prev = this.profile;
++        this.profile = new GameProfile(prev.getId(), name);
++        copyProfileProperties(prev, this.profile);
++        return prev.getName();
++    }
++    
++    @Nonnull
++    @Override
++    public Set<ProfileProperty> getProperties() {
++        return properties;
++    }
++    
++    @Override
++    public void setProperties(Collection<ProfileProperty> properties) {
++        properties.forEach(this::setProperty);
++    }
++    
++    @Override
++    public void clearProperties() {
++        profile.getProperties().clear();
++    }
++    
++    @Override
++    public boolean removeProperty(String property) {
++        return !profile.getProperties().removeAll(property).isEmpty();
++    }
++    
++    @Override
++    public boolean equals(Object o) {
++        if (this == o) return true;
++        if (o == null || getClass() != o.getClass()) return false;
++        CraftPlayerProfile that = (CraftPlayerProfile) o;
++        return Objects.equals(profile, that.profile);
++    }
++    
++    @Override
++    public int hashCode() {
++        return profile.hashCode();
++    }
++    
++    @Override
++    public String toString() {
++        return profile.toString();
++    }
++    
++    @Override
++    public CraftPlayerProfile clone() {
++        CraftPlayerProfile clone = new CraftPlayerProfile(this.getId(), this.getName());
++        clone.setProperties(getProperties());
++        return clone;
++    }
++    
++    @Override
++    public boolean isComplete() {
++        return profile.isComplete();
++    }
++    
++    @Override
++    public boolean completeFromCache() {
++        MinecraftServer server = MinecraftServer.getServer();
++        return completeFromCache(false, com.hpfxd.pandaspigot.config.PandaSpigotConfig.get().isProxyOnlineMode());
++    }
++    
++    public boolean completeFromCache(boolean onlineMode) {
++        return completeFromCache(false, onlineMode);
++    }
++    
++    public boolean completeFromCache(boolean lookupUUID, boolean onlineMode) {
++        MinecraftServer server = MinecraftServer.getServer();
++        String name = profile.getName();
++        UserCache userCache = server.getUserCache();
++        if (profile.getId() == null) {
++            final GameProfile profile;
++            if (onlineMode) {
++                profile = lookupUUID ? userCache.getProfile(name) : userCache.getProfileIfCached(name);
++            } else {
++                // Make an OfflinePlayer using an offline mode UUID since the name has no profile
++                profile = new GameProfile(UUID.nameUUIDFromBytes(("OfflinePlayer:" + name).getBytes(Charsets.UTF_8)), name);
++            }
++            if (profile != null) {
++                // if old has it, assume its newer, so overwrite, else use cached if it was set and ours wasn't
++                copyProfileProperties(this.profile, profile);
++                this.profile = profile;
++            }
++        }
++        
++        if ((profile.getName() == null || !hasTextures()) && profile.getId() != null) {
++            GameProfile profile = userCache.getProfile(this.profile.getId());
++            if (profile != null) {
++                // if old has it, assume its newer, so overwrite, else use cached if it was set and ours wasn't
++                copyProfileProperties(this.profile, profile);
++                this.profile = profile;
++            }
++        }
++        return this.profile.isComplete();
++    }
++    
++    public boolean complete(boolean textures) {
++        MinecraftServer server = MinecraftServer.getServer();
++        return complete(textures, com.hpfxd.pandaspigot.config.PandaSpigotConfig.get().isProxyOnlineMode());
++    }
++    
++    public boolean complete(boolean textures, boolean onlineMode) {
++        MinecraftServer server = MinecraftServer.getServer();
++        
++        boolean isCompleteFromCache = this.completeFromCache(true, onlineMode);
++        if (onlineMode && (!isCompleteFromCache || textures && !hasTextures())) {
++            GameProfile result = server.getMinecraftSessionService().fillProfileProperties(profile, true);
++            if (result != null) {
++                copyProfileProperties(result, this.profile, true);
++            }
++            if (this.profile.isComplete()) {
++                server.getUserCache().saveProfile(this.profile);
++            }
++        }
++        return profile.isComplete() && (!onlineMode || !textures || hasTextures());
++    }
++    
++    private static void copyProfileProperties(GameProfile source, GameProfile target) {
++        copyProfileProperties(source, target, false);
++    }
++    
++    private static void copyProfileProperties(GameProfile source, GameProfile target, boolean clearTarget) {
++        PropertyMap sourceProperties = source.getProperties();
++        PropertyMap targetProperties = target.getProperties();
++        if (clearTarget) targetProperties.clear();
++        if (sourceProperties.isEmpty()) {
++            return;
++        }
++        
++        for (Property property : sourceProperties.values()) {
++            targetProperties.removeAll(property.getName());
++            targetProperties.put(property.getName(), property);
++        }
++    }
++    
++    private static ProfileProperty toBukkit(Property property) {
++        return new ProfileProperty(property.getName(), property.getValue(), property.getSignature());
++    }
++    
++    public static PlayerProfile asBukkitCopy(GameProfile gameProfile) {
++        CraftPlayerProfile profile = new CraftPlayerProfile(gameProfile.getId(), gameProfile.getName());
++        copyProfileProperties(gameProfile, profile.profile);
++        return profile;
++    }
++    
++    public static PlayerProfile asBukkitMirror(GameProfile profile) {
++        return new CraftPlayerProfile(profile);
++    }
++    
++    public static Property asAuthlib(ProfileProperty property) {
++        return new Property(property.getName(), property.getValue(), property.getSignature());
++    }
++    
++    public static GameProfile asAuthlibCopy(PlayerProfile profile) {
++        CraftPlayerProfile craft = ((CraftPlayerProfile) profile);
++        return asAuthlib(craft.clone());
++    }
++    
++    public static GameProfile asAuthlib(PlayerProfile profile) {
++        CraftPlayerProfile craft = ((CraftPlayerProfile) profile);
++        return craft.getGameProfile();
++    }
++    
++    private class PropertySet extends AbstractSet<ProfileProperty> {
++        
++        @Override
++        public Iterator<ProfileProperty> iterator() {
++            return new ProfilePropertyIterator(profile.getProperties().values().iterator());
++        }
++        
++        @Override
++        public int size() {
++            return profile.getProperties().size();
++        }
++        
++        @Override
++        public boolean add(ProfileProperty property) {
++            setProperty(property);
++            return true;
++        }
++        
++        @Override
++        public boolean addAll(Collection<? extends ProfileProperty> c) {
++            //noinspection unchecked
++            setProperties((Collection<ProfileProperty>) c);
++            return true;
++        }
++        
++        @Override
++        public boolean contains(Object o) {
++            return o instanceof ProfileProperty && profile.getProperties().containsKey(((ProfileProperty) o).getName());
++        }
++        
++        private class ProfilePropertyIterator implements Iterator<ProfileProperty> {
++            private final Iterator<Property> iterator;
++            
++            ProfilePropertyIterator(Iterator<Property> iterator) {
++                this.iterator = iterator;
++            }
++            
++            @Override
++            public boolean hasNext() {
++                return iterator.hasNext();
++            }
++            
++            @Override
++            public ProfileProperty next() {
++                return toBukkit(iterator.next());
++            }
++            
++            @Override
++            public void remove() {
++                iterator.remove();
++            }
++        }
++    }
++}
+diff --git a/src/main/java/com/destroystokyo/paper/utils/CachedSizeConcurrentLinkedQueue.java b/src/main/java/com/destroystokyo/paper/utils/CachedSizeConcurrentLinkedQueue.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..c8540d16defdc633113b504616794f440ac1c160
+--- /dev/null
++++ b/src/main/java/com/destroystokyo/paper/utils/CachedSizeConcurrentLinkedQueue.java
+@@ -0,0 +1,31 @@
++package com.destroystokyo.paper.utils;
++
++import java.util.concurrent.ConcurrentLinkedQueue;
++import java.util.concurrent.atomic.LongAdder;
++
++public class CachedSizeConcurrentLinkedQueue<E> extends ConcurrentLinkedQueue<E> {
++    private final LongAdder cachedSize = new LongAdder();
++    
++    @Override
++    public boolean add(E e) {
++        boolean result = super.add(e);
++        if (result) {
++            cachedSize.increment();
++        }
++        return result;
++    }
++    
++    @Override
++    public E poll() {
++        E result = super.poll();
++        if (result != null) {
++            cachedSize.decrement();
++        }
++        return result;
++    }
++    
++    @Override
++    public int size() {
++        return cachedSize.intValue();
++    }
++}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/CompatHacks.java b/src/main/java/com/hpfxd/pandaspigot/CompatHacks.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..c45655f5232934db455aaa5d2d3ff721a5733051
+--- /dev/null
++++ b/src/main/java/com/hpfxd/pandaspigot/CompatHacks.java
+@@ -0,0 +1,11 @@
++package com.hpfxd.pandaspigot;
++
++import org.bukkit.Bukkit;
++
++public class CompatHacks {
++    private CompatHacks() {}
++    public static boolean hasProtocolSupport() {
++        return Bukkit.getPluginManager().isPluginEnabled("ProtocolSupport");
++    }
++}
++
+diff --git a/src/main/java/com/hpfxd/pandaspigot/Metrics.java b/src/main/java/com/hpfxd/pandaspigot/Metrics.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..9134394542f49f7c400a4a07b649048899694448
+--- /dev/null
++++ b/src/main/java/com/hpfxd/pandaspigot/Metrics.java
+@@ -0,0 +1,844 @@
++package com.hpfxd.pandaspigot;
++
++import java.io.BufferedReader;
++import java.io.ByteArrayOutputStream;
++import java.io.DataOutputStream;
++import java.io.File;
++import java.io.IOException;
++import java.io.InputStreamReader;
++import java.lang.reflect.Method;
++import java.net.URL;
++import java.nio.charset.StandardCharsets;
++import java.util.Arrays;
++import java.util.Collection;
++import java.util.HashSet;
++import java.util.Map;
++import java.util.Objects;
++import java.util.Set;
++import java.util.UUID;
++import java.util.concurrent.Callable;
++import java.util.concurrent.Executors;
++import java.util.concurrent.ScheduledExecutorService;
++import java.util.concurrent.TimeUnit;
++import java.util.function.BiConsumer;
++import java.util.function.Consumer;
++import java.util.function.Supplier;
++import java.util.logging.Level;
++import java.util.stream.Collectors;
++import java.util.zip.GZIPOutputStream;
++import javax.net.ssl.HttpsURLConnection;
++
++import net.minecraft.server.MinecraftServer;
++import org.bukkit.Bukkit;
++import org.bukkit.configuration.file.YamlConfiguration;
++import org.bukkit.entity.Player;
++
++public class Metrics {
++    private static final int SERVICE_ID = 15154;
++    private final MetricsBase metricsBase;
++
++    public Metrics() {
++        // Get the config file
++        File bStatsFolder = new File((File) MinecraftServer.getServer().options.valueOf("plugins"), "bStats");
++        File configFile = new File(bStatsFolder, "config.yml");
++        YamlConfiguration config = YamlConfiguration.loadConfiguration(configFile);
++        if (!config.isSet("serverUuid")) {
++            config.addDefault("enabled", true);
++            config.addDefault("serverUuid", UUID.randomUUID().toString());
++            config.addDefault("logFailedRequests", false);
++            config.addDefault("logSentData", false);
++            config.addDefault("logResponseStatusText", false);
++            // Inform the server owners about bStats
++            config
++                .options()
++                .header(
++                    "bStats (https://bStats.org) collects some basic information for plugin authors, like how\n"
++                        + "many people use their plugin and their total player count. It's recommended to keep bStats\n"
++                        + "enabled, but if you're not comfortable with this, you can turn this setting off. There is no\n"
++                        + "performance penalty associated with having metrics enabled, and data sent to bStats is fully\n"
++                        + "anonymous.")
++                .copyDefaults(true);
++            try {
++                config.save(configFile);
++            } catch (IOException ignored) {
++            }
++        }
++        // Load the data
++        boolean enabled = config.getBoolean("enabled", true);
++        String serverUUID = config.getString("serverUuid");
++        boolean logErrors = config.getBoolean("logFailedRequests", false);
++        boolean logSentData = config.getBoolean("logSentData", false);
++        boolean logResponseStatusText = config.getBoolean("logResponseStatusText", false);
++        metricsBase =
++            new MetricsBase(
++                "bukkit",
++                serverUUID,
++                SERVICE_ID,
++                enabled,
++                this::appendPlatformData,
++                this::appendServiceData,
++                submitDataTask -> MinecraftServer.getServer().processQueue.add(submitDataTask),
++                () -> MinecraftServer.getServer().isRunning(),
++                (message, error) -> Bukkit.getLogger().log(Level.WARNING, message, error),
++                (message) -> Bukkit.getLogger().log(Level.INFO, message),
++                logErrors,
++                logSentData,
++                logResponseStatusText);
++    }
++
++    /**
++     * Adds a custom chart.
++     *
++     * @param chart The chart to add.
++     */
++    public void addCustomChart(CustomChart chart) {
++        metricsBase.addCustomChart(chart);
++    }
++
++    private void appendPlatformData(JsonObjectBuilder builder) {
++        builder.appendField("playerAmount", getPlayerAmount());
++        builder.appendField("onlineMode", Bukkit.getOnlineMode() ? 1 : 0);
++        builder.appendField("bukkitVersion", Bukkit.getVersion());
++        builder.appendField("bukkitName", Bukkit.getName());
++        builder.appendField("javaVersion", System.getProperty("java.version"));
++        builder.appendField("osName", System.getProperty("os.name"));
++        builder.appendField("osArch", System.getProperty("os.arch"));
++        builder.appendField("osVersion", System.getProperty("os.version"));
++        builder.appendField("coreCount", Runtime.getRuntime().availableProcessors());
++    }
++
++    private void appendServiceData(JsonObjectBuilder builder) {
++        String version = Bukkit.getVersion();
++        int idx = version.indexOf(" (MC: ");
++        if (idx != -1) {
++            version = version.substring(0, idx);
++        }
++        builder.appendField("pluginVersion", version);
++    }
++
++    private int getPlayerAmount() {
++        try {
++            // Around MC 1.8 the return type was changed from an array to a collection,
++            // This fixes java.lang.NoSuchMethodError:
++            // org.bukkit.Bukkit.getOnlinePlayers()Ljava/util/Collection;
++            Method onlinePlayersMethod = Class.forName("org.bukkit.Server").getMethod("getOnlinePlayers");
++            return onlinePlayersMethod.getReturnType().equals(Collection.class)
++                ? ((Collection<?>) onlinePlayersMethod.invoke(Bukkit.getServer())).size()
++                : ((Player[]) onlinePlayersMethod.invoke(Bukkit.getServer())).length;
++        } catch (Exception e) {
++            // Just use the new method if the reflection failed
++            return Bukkit.getOnlinePlayers().size();
++        }
++    }
++
++    public static class MetricsBase {
++
++        /** The version of the Metrics class. */
++        public static final String METRICS_VERSION = "3.0.0";
++
++        private static final ScheduledExecutorService scheduler =
++            Executors.newScheduledThreadPool(1, task -> new Thread(task, "bStats-Metrics"));
++
++        private static final String REPORT_URL = "https://bStats.org/api/v2/data/%s";
++
++        private final String platform;
++
++        private final String serverUuid;
++
++        private final int serviceId;
++
++        private final Consumer<JsonObjectBuilder> appendPlatformDataConsumer;
++
++        private final Consumer<JsonObjectBuilder> appendServiceDataConsumer;
++
++        private final Consumer<Runnable> submitTaskConsumer;
++
++        private final Supplier<Boolean> checkServiceEnabledSupplier;
++
++        private final BiConsumer<String, Throwable> errorLogger;
++
++        private final Consumer<String> infoLogger;
++
++        private final boolean logErrors;
++
++        private final boolean logSentData;
++
++        private final boolean logResponseStatusText;
++
++        private final Set<CustomChart> customCharts = new HashSet<>();
++
++        private final boolean enabled;
++
++        /**
++         * Creates a new MetricsBase class instance.
++         *
++         * @param platform The platform of the service.
++         * @param serviceId The id of the service.
++         * @param serverUuid The server uuid.
++         * @param enabled Whether or not data sending is enabled.
++         * @param appendPlatformDataConsumer A consumer that receives a {@code JsonObjectBuilder} and
++         *     appends all platform-specific data.
++         * @param appendServiceDataConsumer A consumer that receives a {@code JsonObjectBuilder} and
++         *     appends all service-specific data.
++         * @param submitTaskConsumer A consumer that takes a runnable with the submit task. This can be
++         *     used to delegate the data collection to a another thread to prevent errors caused by
++         *     concurrency. Can be {@code null}.
++         * @param checkServiceEnabledSupplier A supplier to check if the service is still enabled.
++         * @param errorLogger A consumer that accepts log message and an error.
++         * @param infoLogger A consumer that accepts info log messages.
++         * @param logErrors Whether or not errors should be logged.
++         * @param logSentData Whether or not the sent data should be logged.
++         * @param logResponseStatusText Whether or not the response status text should be logged.
++         */
++        public MetricsBase(
++            String platform,
++            String serverUuid,
++            int serviceId,
++            boolean enabled,
++            Consumer<JsonObjectBuilder> appendPlatformDataConsumer,
++            Consumer<JsonObjectBuilder> appendServiceDataConsumer,
++            Consumer<Runnable> submitTaskConsumer,
++            Supplier<Boolean> checkServiceEnabledSupplier,
++            BiConsumer<String, Throwable> errorLogger,
++            Consumer<String> infoLogger,
++            boolean logErrors,
++            boolean logSentData,
++            boolean logResponseStatusText) {
++            this.platform = platform;
++            this.serverUuid = serverUuid;
++            this.serviceId = serviceId;
++            this.enabled = enabled;
++            this.appendPlatformDataConsumer = appendPlatformDataConsumer;
++            this.appendServiceDataConsumer = appendServiceDataConsumer;
++            this.submitTaskConsumer = submitTaskConsumer;
++            this.checkServiceEnabledSupplier = checkServiceEnabledSupplier;
++            this.errorLogger = errorLogger;
++            this.infoLogger = infoLogger;
++            this.logErrors = logErrors;
++            this.logSentData = logSentData;
++            this.logResponseStatusText = logResponseStatusText;
++            checkRelocation();
++            if (enabled) {
++                // WARNING: Removing the option to opt-out will get your plugin banned from bStats
++                startSubmitting();
++            }
++        }
++
++        public void addCustomChart(CustomChart chart) {
++            this.customCharts.add(chart);
++        }
++
++        private void startSubmitting() {
++            final Runnable submitTask =
++                () -> {
++                    if (!enabled || !checkServiceEnabledSupplier.get()) {
++                        // Submitting data or service is disabled
++                        scheduler.shutdown();
++                        return;
++                    }
++                    if (submitTaskConsumer != null) {
++                        submitTaskConsumer.accept(this::submitData);
++                    } else {
++                        this.submitData();
++                    }
++                };
++            // Many servers tend to restart at a fixed time at xx:00 which causes an uneven distribution
++            // of requests on the
++            // bStats backend. To circumvent this problem, we introduce some randomness into the initial
++            // and second delay.
++            // WARNING: You must not modify and part of this Metrics class, including the submit delay or
++            // frequency!
++            // WARNING: Modifying this code will get your plugin banned on bStats. Just don't do it!
++            long initialDelay = (long) (1000 * 60 * (3 + Math.random() * 3));
++            long secondDelay = (long) (1000 * 60 * (Math.random() * 30));
++            scheduler.schedule(submitTask, initialDelay, TimeUnit.MILLISECONDS);
++            scheduler.scheduleAtFixedRate(
++                submitTask, initialDelay + secondDelay, 1000 * 60 * 30, TimeUnit.MILLISECONDS);
++        }
++
++        private void submitData() {
++            final JsonObjectBuilder baseJsonBuilder = new JsonObjectBuilder();
++            appendPlatformDataConsumer.accept(baseJsonBuilder);
++            final JsonObjectBuilder serviceJsonBuilder = new JsonObjectBuilder();
++            appendServiceDataConsumer.accept(serviceJsonBuilder);
++            JsonObjectBuilder.JsonObject[] chartData =
++                customCharts.stream()
++                    .map(customChart -> customChart.getRequestJsonObject(errorLogger, logErrors))
++                    .filter(Objects::nonNull)
++                    .toArray(JsonObjectBuilder.JsonObject[]::new);
++            serviceJsonBuilder.appendField("id", serviceId);
++            serviceJsonBuilder.appendField("customCharts", chartData);
++            baseJsonBuilder.appendField("service", serviceJsonBuilder.build());
++            baseJsonBuilder.appendField("serverUUID", serverUuid);
++            baseJsonBuilder.appendField("metricsVersion", METRICS_VERSION);
++            JsonObjectBuilder.JsonObject data = baseJsonBuilder.build();
++            scheduler.execute(
++                () -> {
++                    try {
++                        // Send the data
++                        sendData(data);
++                    } catch (Exception e) {
++                        // Something went wrong! :(
++                        if (logErrors) {
++                            errorLogger.accept("Could not submit bStats metrics data", e);
++                        }
++                    }
++                });
++        }
++
++        private void sendData(JsonObjectBuilder.JsonObject data) throws Exception {
++            if (logSentData) {
++                infoLogger.accept("Sent bStats metrics data: " + data.toString());
++            }
++            String url = String.format(REPORT_URL, platform);
++            HttpsURLConnection connection = (HttpsURLConnection) new URL(url).openConnection();
++            // Compress the data to save bandwidth
++            byte[] compressedData = compress(data.toString());
++            connection.setRequestMethod("POST");
++            connection.addRequestProperty("Accept", "application/json");
++            connection.addRequestProperty("Connection", "close");
++            connection.addRequestProperty("Content-Encoding", "gzip");
++            connection.addRequestProperty("Content-Length", String.valueOf(compressedData.length));
++            connection.setRequestProperty("Content-Type", "application/json");
++            connection.setRequestProperty("User-Agent", "Metrics-Service/1");
++            connection.setDoOutput(true);
++            try (DataOutputStream outputStream = new DataOutputStream(connection.getOutputStream())) {
++                outputStream.write(compressedData);
++            }
++            StringBuilder builder = new StringBuilder();
++            try (BufferedReader bufferedReader =
++                     new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
++                String line;
++                while ((line = bufferedReader.readLine()) != null) {
++                    builder.append(line);
++                }
++            }
++            if (logResponseStatusText) {
++                infoLogger.accept("Sent data to bStats and received response: " + builder);
++            }
++        }
++
++        /** Checks that the class was properly relocated. */
++        private void checkRelocation() {
++            // You can use the property to disable the check in your test environment
++            if (System.getProperty("bstats.relocatecheck") == null
++                || !System.getProperty("bstats.relocatecheck").equals("false")) {
++                // Maven's Relocate is clever and changes strings, too. So we have to use this little
++                // "trick" ... :D
++                final String defaultPackage =
++                    new String(new byte[] {'o', 'r', 'g', '.', 'b', 's', 't', 'a', 't', 's'});
++                final String examplePackage =
++                    new String(new byte[] {'y', 'o', 'u', 'r', '.', 'p', 'a', 'c', 'k', 'a', 'g', 'e'});
++                // We want to make sure no one just copy & pastes the example and uses the wrong package
++                // names
++                if (MetricsBase.class.getPackage().getName().startsWith(defaultPackage)
++                    || MetricsBase.class.getPackage().getName().startsWith(examplePackage)) {
++                    throw new IllegalStateException("bStats Metrics class has not been relocated correctly!");
++                }
++            }
++        }
++
++        /**
++         * Gzips the given string.
++         *
++         * @param str The string to gzip.
++         * @return The gzipped string.
++         */
++        private static byte[] compress(final String str) throws IOException {
++            if (str == null) {
++                return null;
++            }
++            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
++            try (GZIPOutputStream gzip = new GZIPOutputStream(outputStream)) {
++                gzip.write(str.getBytes(StandardCharsets.UTF_8));
++            }
++            return outputStream.toByteArray();
++        }
++    }
++
++    public static class DrilldownPie extends CustomChart {
++
++        private final Callable<Map<String, Map<String, Integer>>> callable;
++
++        /**
++         * Class constructor.
++         *
++         * @param chartId The id of the chart.
++         * @param callable The callable which is used to request the chart data.
++         */
++        public DrilldownPie(String chartId, Callable<Map<String, Map<String, Integer>>> callable) {
++            super(chartId);
++            this.callable = callable;
++        }
++
++        @Override
++        public JsonObjectBuilder.JsonObject getChartData() throws Exception {
++            JsonObjectBuilder valuesBuilder = new JsonObjectBuilder();
++            Map<String, Map<String, Integer>> map = callable.call();
++            if (map == null || map.isEmpty()) {
++                // Null = skip the chart
++                return null;
++            }
++            boolean reallyAllSkipped = true;
++            for (Map.Entry<String, Map<String, Integer>> entryValues : map.entrySet()) {
++                JsonObjectBuilder valueBuilder = new JsonObjectBuilder();
++                boolean allSkipped = true;
++                for (Map.Entry<String, Integer> valueEntry : map.get(entryValues.getKey()).entrySet()) {
++                    valueBuilder.appendField(valueEntry.getKey(), valueEntry.getValue());
++                    allSkipped = false;
++                }
++                if (!allSkipped) {
++                    reallyAllSkipped = false;
++                    valuesBuilder.appendField(entryValues.getKey(), valueBuilder.build());
++                }
++            }
++            if (reallyAllSkipped) {
++                // Null = skip the chart
++                return null;
++            }
++            return new JsonObjectBuilder().appendField("values", valuesBuilder.build()).build();
++        }
++    }
++
++    public static class AdvancedPie extends CustomChart {
++
++        private final Callable<Map<String, Integer>> callable;
++
++        /**
++         * Class constructor.
++         *
++         * @param chartId The id of the chart.
++         * @param callable The callable which is used to request the chart data.
++         */
++        public AdvancedPie(String chartId, Callable<Map<String, Integer>> callable) {
++            super(chartId);
++            this.callable = callable;
++        }
++
++        @Override
++        protected JsonObjectBuilder.JsonObject getChartData() throws Exception {
++            JsonObjectBuilder valuesBuilder = new JsonObjectBuilder();
++            Map<String, Integer> map = callable.call();
++            if (map == null || map.isEmpty()) {
++                // Null = skip the chart
++                return null;
++            }
++            boolean allSkipped = true;
++            for (Map.Entry<String, Integer> entry : map.entrySet()) {
++                if (entry.getValue() == 0) {
++                    // Skip this invalid
++                    continue;
++                }
++                allSkipped = false;
++                valuesBuilder.appendField(entry.getKey(), entry.getValue());
++            }
++            if (allSkipped) {
++                // Null = skip the chart
++                return null;
++            }
++            return new JsonObjectBuilder().appendField("values", valuesBuilder.build()).build();
++        }
++    }
++
++    public static class MultiLineChart extends CustomChart {
++
++        private final Callable<Map<String, Integer>> callable;
++
++        /**
++         * Class constructor.
++         *
++         * @param chartId The id of the chart.
++         * @param callable The callable which is used to request the chart data.
++         */
++        public MultiLineChart(String chartId, Callable<Map<String, Integer>> callable) {
++            super(chartId);
++            this.callable = callable;
++        }
++
++        @Override
++        protected JsonObjectBuilder.JsonObject getChartData() throws Exception {
++            JsonObjectBuilder valuesBuilder = new JsonObjectBuilder();
++            Map<String, Integer> map = callable.call();
++            if (map == null || map.isEmpty()) {
++                // Null = skip the chart
++                return null;
++            }
++            boolean allSkipped = true;
++            for (Map.Entry<String, Integer> entry : map.entrySet()) {
++                if (entry.getValue() == 0) {
++                    // Skip this invalid
++                    continue;
++                }
++                allSkipped = false;
++                valuesBuilder.appendField(entry.getKey(), entry.getValue());
++            }
++            if (allSkipped) {
++                // Null = skip the chart
++                return null;
++            }
++            return new JsonObjectBuilder().appendField("values", valuesBuilder.build()).build();
++        }
++    }
++
++    public static class SimpleBarChart extends CustomChart {
++
++        private final Callable<Map<String, Integer>> callable;
++
++        /**
++         * Class constructor.
++         *
++         * @param chartId The id of the chart.
++         * @param callable The callable which is used to request the chart data.
++         */
++        public SimpleBarChart(String chartId, Callable<Map<String, Integer>> callable) {
++            super(chartId);
++            this.callable = callable;
++        }
++
++        @Override
++        protected JsonObjectBuilder.JsonObject getChartData() throws Exception {
++            JsonObjectBuilder valuesBuilder = new JsonObjectBuilder();
++            Map<String, Integer> map = callable.call();
++            if (map == null || map.isEmpty()) {
++                // Null = skip the chart
++                return null;
++            }
++            for (Map.Entry<String, Integer> entry : map.entrySet()) {
++                valuesBuilder.appendField(entry.getKey(), new int[] {entry.getValue()});
++            }
++            return new JsonObjectBuilder().appendField("values", valuesBuilder.build()).build();
++        }
++    }
++
++    public abstract static class CustomChart {
++
++        private final String chartId;
++
++        protected CustomChart(String chartId) {
++            if (chartId == null) {
++                throw new IllegalArgumentException("chartId must not be null");
++            }
++            this.chartId = chartId;
++        }
++
++        public JsonObjectBuilder.JsonObject getRequestJsonObject(
++            BiConsumer<String, Throwable> errorLogger, boolean logErrors) {
++            JsonObjectBuilder builder = new JsonObjectBuilder();
++            builder.appendField("chartId", chartId);
++            try {
++                JsonObjectBuilder.JsonObject data = getChartData();
++                if (data == null) {
++                    // If the data is null we don't send the chart.
++                    return null;
++                }
++                builder.appendField("data", data);
++            } catch (Throwable t) {
++                if (logErrors) {
++                    errorLogger.accept("Failed to get data for custom chart with id " + chartId, t);
++                }
++                return null;
++            }
++            return builder.build();
++        }
++
++        protected abstract JsonObjectBuilder.JsonObject getChartData() throws Exception;
++    }
++
++    public static class SimplePie extends CustomChart {
++
++        private final Callable<String> callable;
++
++        /**
++         * Class constructor.
++         *
++         * @param chartId The id of the chart.
++         * @param callable The callable which is used to request the chart data.
++         */
++        public SimplePie(String chartId, Callable<String> callable) {
++            super(chartId);
++            this.callable = callable;
++        }
++
++        @Override
++        protected JsonObjectBuilder.JsonObject getChartData() throws Exception {
++            String value = callable.call();
++            if (value == null || value.isEmpty()) {
++                // Null = skip the chart
++                return null;
++            }
++            return new JsonObjectBuilder().appendField("value", value).build();
++        }
++    }
++
++    public static class AdvancedBarChart extends CustomChart {
++
++        private final Callable<Map<String, int[]>> callable;
++
++        /**
++         * Class constructor.
++         *
++         * @param chartId The id of the chart.
++         * @param callable The callable which is used to request the chart data.
++         */
++        public AdvancedBarChart(String chartId, Callable<Map<String, int[]>> callable) {
++            super(chartId);
++            this.callable = callable;
++        }
++
++        @Override
++        protected JsonObjectBuilder.JsonObject getChartData() throws Exception {
++            JsonObjectBuilder valuesBuilder = new JsonObjectBuilder();
++            Map<String, int[]> map = callable.call();
++            if (map == null || map.isEmpty()) {
++                // Null = skip the chart
++                return null;
++            }
++            boolean allSkipped = true;
++            for (Map.Entry<String, int[]> entry : map.entrySet()) {
++                if (entry.getValue().length == 0) {
++                    // Skip this invalid
++                    continue;
++                }
++                allSkipped = false;
++                valuesBuilder.appendField(entry.getKey(), entry.getValue());
++            }
++            if (allSkipped) {
++                // Null = skip the chart
++                return null;
++            }
++            return new JsonObjectBuilder().appendField("values", valuesBuilder.build()).build();
++        }
++    }
++
++    public static class SingleLineChart extends CustomChart {
++
++        private final Callable<Integer> callable;
++
++        /**
++         * Class constructor.
++         *
++         * @param chartId The id of the chart.
++         * @param callable The callable which is used to request the chart data.
++         */
++        public SingleLineChart(String chartId, Callable<Integer> callable) {
++            super(chartId);
++            this.callable = callable;
++        }
++
++        @Override
++        protected JsonObjectBuilder.JsonObject getChartData() throws Exception {
++            int value = callable.call();
++            if (value == 0) {
++                // Null = skip the chart
++                return null;
++            }
++            return new JsonObjectBuilder().appendField("value", value).build();
++        }
++    }
++
++    /**
++     * An extremely simple JSON builder.
++     *
++     * <p>While this class is neither feature-rich nor the most performant one, it's sufficient enough
++     * for its use-case.
++     */
++    public static class JsonObjectBuilder {
++
++        private StringBuilder builder = new StringBuilder();
++
++        private boolean hasAtLeastOneField = false;
++
++        public JsonObjectBuilder() {
++            builder.append("{");
++        }
++
++        /**
++         * Appends a null field to the JSON.
++         *
++         * @param key The key of the field.
++         * @return A reference to this object.
++         */
++        public JsonObjectBuilder appendNull(String key) {
++            appendFieldUnescaped(key, "null");
++            return this;
++        }
++
++        /**
++         * Appends a string field to the JSON.
++         *
++         * @param key The key of the field.
++         * @param value The value of the field.
++         * @return A reference to this object.
++         */
++        public JsonObjectBuilder appendField(String key, String value) {
++            if (value == null) {
++                throw new IllegalArgumentException("JSON value must not be null");
++            }
++            appendFieldUnescaped(key, "\"" + escape(value) + "\"");
++            return this;
++        }
++
++        /**
++         * Appends an integer field to the JSON.
++         *
++         * @param key The key of the field.
++         * @param value The value of the field.
++         * @return A reference to this object.
++         */
++        public JsonObjectBuilder appendField(String key, int value) {
++            appendFieldUnescaped(key, String.valueOf(value));
++            return this;
++        }
++
++        /**
++         * Appends an object to the JSON.
++         *
++         * @param key The key of the field.
++         * @param object The object.
++         * @return A reference to this object.
++         */
++        public JsonObjectBuilder appendField(String key, JsonObject object) {
++            if (object == null) {
++                throw new IllegalArgumentException("JSON object must not be null");
++            }
++            appendFieldUnescaped(key, object.toString());
++            return this;
++        }
++
++        /**
++         * Appends a string array to the JSON.
++         *
++         * @param key The key of the field.
++         * @param values The string array.
++         * @return A reference to this object.
++         */
++        public JsonObjectBuilder appendField(String key, String[] values) {
++            if (values == null) {
++                throw new IllegalArgumentException("JSON values must not be null");
++            }
++            String escapedValues =
++                Arrays.stream(values)
++                    .map(value -> "\"" + escape(value) + "\"")
++                    .collect(Collectors.joining(","));
++            appendFieldUnescaped(key, "[" + escapedValues + "]");
++            return this;
++        }
++
++        /**
++         * Appends an integer array to the JSON.
++         *
++         * @param key The key of the field.
++         * @param values The integer array.
++         * @return A reference to this object.
++         */
++        public JsonObjectBuilder appendField(String key, int[] values) {
++            if (values == null) {
++                throw new IllegalArgumentException("JSON values must not be null");
++            }
++            String escapedValues =
++                Arrays.stream(values).mapToObj(String::valueOf).collect(Collectors.joining(","));
++            appendFieldUnescaped(key, "[" + escapedValues + "]");
++            return this;
++        }
++
++        /**
++         * Appends an object array to the JSON.
++         *
++         * @param key The key of the field.
++         * @param values The integer array.
++         * @return A reference to this object.
++         */
++        public JsonObjectBuilder appendField(String key, JsonObject[] values) {
++            if (values == null) {
++                throw new IllegalArgumentException("JSON values must not be null");
++            }
++            String escapedValues =
++                Arrays.stream(values).map(JsonObject::toString).collect(Collectors.joining(","));
++            appendFieldUnescaped(key, "[" + escapedValues + "]");
++            return this;
++        }
++
++        /**
++         * Appends a field to the object.
++         *
++         * @param key The key of the field.
++         * @param escapedValue The escaped value of the field.
++         */
++        private void appendFieldUnescaped(String key, String escapedValue) {
++            if (builder == null) {
++                throw new IllegalStateException("JSON has already been built");
++            }
++            if (key == null) {
++                throw new IllegalArgumentException("JSON key must not be null");
++            }
++            if (hasAtLeastOneField) {
++                builder.append(",");
++            }
++            builder.append("\"").append(escape(key)).append("\":").append(escapedValue);
++            hasAtLeastOneField = true;
++        }
++
++        /**
++         * Builds the JSON string and invalidates this builder.
++         *
++         * @return The built JSON string.
++         */
++        public JsonObject build() {
++            if (builder == null) {
++                throw new IllegalStateException("JSON has already been built");
++            }
++            JsonObject object = new JsonObject(builder.append("}").toString());
++            builder = null;
++            return object;
++        }
++
++        /**
++         * Escapes the given string like stated in https://www.ietf.org/rfc/rfc4627.txt.
++         *
++         * <p>This method escapes only the necessary characters '"', '\'. and '\u0000' - '\u001F'.
++         * Compact escapes are not used (e.g., '\n' is escaped as "\u000a" and not as "\n").
++         *
++         * @param value The value to escape.
++         * @return The escaped value.
++         */
++        private static String escape(String value) {
++            final StringBuilder builder = new StringBuilder();
++            for (int i = 0; i < value.length(); i++) {
++                char c = value.charAt(i);
++                if (c == '"') {
++                    builder.append("\\\"");
++                } else if (c == '\\') {
++                    builder.append("\\\\");
++                } else if (c <= '\u000F') {
++                    builder.append("\\u000").append(Integer.toHexString(c));
++                } else if (c <= '\u001F') {
++                    builder.append("\\u00").append(Integer.toHexString(c));
++                } else {
++                    builder.append(c);
++                }
++            }
++            return builder.toString();
++        }
++
++        /**
++         * A super simple representation of a JSON object.
++         *
++         * <p>This class only exists to make methods of the {@link JsonObjectBuilder} type-safe and not
++         * allow a raw string inputs for methods like {@link JsonObjectBuilder#appendField(String,
++         * JsonObject)}.
++         */
++        public static class JsonObject {
++
++            private final String value;
++
++            private JsonObject(String value) {
++                this.value = value;
++            }
++
++            @Override
++            public String toString() {
++                return value;
++            }
++        }
++    }
++}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/config/PacketLimiterConfig.java b/src/main/java/com/hpfxd/pandaspigot/config/PacketLimiterConfig.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..24d213655f038129e25bd75ce876ba68ed43105c
+--- /dev/null
++++ b/src/main/java/com/hpfxd/pandaspigot/config/PacketLimiterConfig.java
+@@ -0,0 +1,132 @@
++package com.hpfxd.pandaspigot.config;
++
++import net.minecraft.server.Packet;
++import org.bukkit.Bukkit;
++import org.spongepowered.configurate.ConfigurationNode;
++import org.spongepowered.configurate.serialize.SerializationException;
++import org.spongepowered.configurate.serialize.TypeSerializer;
++
++import java.lang.reflect.Type;
++import java.util.HashMap;
++import java.util.Map;
++
++public class PacketLimiterConfig {
++    private final String kickMessage;
++    private final PacketLimit allPacketsLimit;
++    private final Map<Class<? extends Packet<?>>, PacketLimit> packetSpecificLimits;
++
++    public PacketLimiterConfig(String kickMessage, PacketLimit allPacketsLimit, Map<Class<? extends Packet<?>>, PacketLimit> packetSpecificLimits) {
++        this.kickMessage = kickMessage;
++        this.allPacketsLimit = allPacketsLimit;
++        this.packetSpecificLimits = packetSpecificLimits;
++    }
++
++    public static final class PacketLimit {
++        public final double packetLimitInterval;
++        public final double maxPacketRate;
++        public final ViolateAction violateAction;
++
++        public PacketLimit(final double packetLimitInterval, final double maxPacketRate, final ViolateAction violateAction) {
++            this.packetLimitInterval = packetLimitInterval;
++            this.maxPacketRate = maxPacketRate;
++            this.violateAction = violateAction;
++        }
++
++        public enum ViolateAction {
++            KICK, DROP;
++        }
++    }
++
++    static PacketLimiterConfig createDefault() {
++        return new PacketLimiterConfig("&cSent too many packets.", new PacketLimit(7, 500, PacketLimit.ViolateAction.KICK), new HashMap<>());
++    }
++
++    public String getKickMessage() {
++        return this.kickMessage;
++    }
++
++    public PacketLimit getAllPacketsLimit() {
++        return this.allPacketsLimit;
++    }
++
++    public Map<Class<? extends Packet<?>>, PacketLimit> getPacketSpecificLimits() {
++        return this.packetSpecificLimits;
++    }
++
++    public static class Serializer implements TypeSerializer<PacketLimiterConfig> {
++        @Override
++        public PacketLimiterConfig deserialize(Type type, ConfigurationNode node) throws SerializationException {
++            String kickMessage = node.node("kickMessage").getString("&cSent too many packets.");
++            ConfigurationNode limits = node.node("limits");
++
++            PacketLimit allPacketsLimit = null;
++            Map<Class<? extends Packet<?>>, PacketLimit> packetSpecificLimits = new HashMap<>();
++
++            for (Map.Entry<Object, ? extends ConfigurationNode> entry : limits.childrenMap().entrySet()) {
++                String key = String.valueOf(entry.getKey());
++                ConfigurationNode limitNode = entry.getValue();
++                if (key.equals("all")) {
++                    PacketLimit packetLimit = new PacketLimit(
++                        limitNode.node("interval").getDouble(),
++                        limitNode.node("maxPacketRate").getDouble(),
++                        PacketLimit.ViolateAction.KICK
++                    );
++
++                    if (packetLimit.packetLimitInterval > 0.0 && packetLimit.maxPacketRate > 0.0) {
++                        allPacketsLimit = packetLimit;
++                    }
++                } else {
++                    Class<?> clazz;
++                    try {
++                        clazz = Class.forName("net.minecraft.server." + key);
++                    } catch (ClassNotFoundException e) {
++                        Bukkit.getLogger().warning("Packet '" + key + "' does not exist, cannot limit it! Please update pandaspigot.yml");
++                        continue;
++                    }
++
++                    if (!Packet.class.isAssignableFrom(clazz)) {
++                        Bukkit.getLogger().warning("Class '" + key + "' is not a packet, cannot limit it! Please update pandaspigot.yml");
++                        continue;
++                    }
++
++                    PacketLimit packetLimit = new PacketLimit(
++                        limitNode.node("interval").getDouble(),
++                        limitNode.node("maxPacketRate").getDouble(),
++                        limitNode.node("action").get(PacketLimit.ViolateAction.class)
++                    );
++
++                    if (packetLimit.packetLimitInterval > 0.0 && packetLimit.maxPacketRate > 0.0) {
++                        //noinspection unchecked
++                        packetSpecificLimits.put((Class<? extends Packet<?>>) clazz, packetLimit);
++                    }
++                }
++            }
++
++            return new PacketLimiterConfig(kickMessage, allPacketsLimit, packetSpecificLimits);
++        }
++
++        @Override
++        public void serialize(Type type, PacketLimiterConfig config, ConfigurationNode target) throws SerializationException {
++            if (config == null) {
++                target.raw(null);
++                return;
++            }
++
++            target.node("kickMessage").set(config.kickMessage);
++            ConfigurationNode limitsNode = target.node("limits");
++            if (config.allPacketsLimit != null) {
++                limitsNode.node("all", "interval").set(config.allPacketsLimit.packetLimitInterval);
++                limitsNode.node("all", "maxPacketRate").set(config.allPacketsLimit.maxPacketRate);
++            }
++
++            for (Map.Entry<Class<? extends Packet<?>>, PacketLimit> entry : config.packetSpecificLimits.entrySet()) {
++                ConfigurationNode node = limitsNode.node(entry.getKey().getSimpleName());
++                PacketLimit limit = entry.getValue();
++
++                node.node("interval", limit.packetLimitInterval);
++                node.node("maxPacketRate", limit.maxPacketRate);
++                node.node("action").set(limit.violateAction);
++            }
++        }
++    }
++}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/config/PandaSpigotConfig.java b/src/main/java/com/hpfxd/pandaspigot/config/PandaSpigotConfig.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..ae3cdaca275b1a50c5c37c3dd0021c4bd579d373
+--- /dev/null
++++ b/src/main/java/com/hpfxd/pandaspigot/config/PandaSpigotConfig.java
+@@ -0,0 +1,128 @@
++package com.hpfxd.pandaspigot.config;
++
++import com.google.common.base.Throwables;
++import com.hpfxd.configurate.eoyaml.EOYamlConfigurationLoader;
++import net.minecraft.server.World;
++import org.bukkit.Bukkit;
++import org.spigotmc.SpigotConfig;
++import org.spongepowered.configurate.CommentedConfigurationNode;
++import org.spongepowered.configurate.ConfigurationNode;
++import org.spongepowered.configurate.objectmapping.ConfigSerializable;
++import org.spongepowered.configurate.objectmapping.ObjectMapper;
++import org.spongepowered.configurate.objectmapping.meta.Comment;
++import org.spongepowered.configurate.util.MapFactories;
++import org.spongepowered.configurate.util.NamingSchemes;
++
++import java.io.File;
++import java.util.HashMap;
++import java.util.Map;
++
++@ConfigSerializable
++@SuppressWarnings({"FieldCanBeLocal", "FieldMayBeFinal"})
++public class PandaSpigotConfig {
++    private static PandaSpigotConfig config;
++    private static PandaSpigotWorldConfig defaultWorldConfig;
++    private static final Map<String, PandaSpigotWorldConfig> worldConfigs = new HashMap<>();
++    
++    /**
++     * Initialize the configuration, and load it from a file.
++     * <p>
++     * This is called once on server startup, and every reload.
++     *
++     * @param file The configuration file.
++     */
++    public static void init(File file) {
++        EOYamlConfigurationLoader loader = EOYamlConfigurationLoader.builder()
++                .file(file)
++                .defaultOptions(o -> o
++                        .header("This is the configuration file for PandaSpigot.\n" +
++                                "Use caution when modifying settings, as some may impact gameplay in non-obvious ways.")
++                        .mapFactory(MapFactories.insertionOrdered())
++                        .serializers(build -> build.register(PacketLimiterConfig.class, new PacketLimiterConfig.Serializer())
++                                .registerAnnotatedObjects(ObjectMapper.factoryBuilder()
++                                .defaultNamingScheme(NamingSchemes.CAMEL_CASE)
++                                .build())))
++                .build();
++        
++        try {
++            CommentedConfigurationNode root = loader.load();
++            config = root.get(PandaSpigotConfig.class);
++            
++            // worlds
++            CommentedConfigurationNode worldsNode = root.node("worlds")
++                    .comment("The worlds section is for settings which can be configured per-world.\n" +
++                            "\n" +
++                            "Any settings in the \"default\" world will provide default values for\n" +
++                            "other worlds which don't explicitly specify settings.\n" +
++                            "\n" +
++                            "To specify settings for a specific world, just add a new section with the world's name.");
++            ConfigurationNode defaultWorldNode = worldsNode.node("default");
++            defaultWorldConfig = defaultWorldNode.get(PandaSpigotWorldConfig.class);
++            defaultWorldNode.set(defaultWorldConfig); // populate default in config
++            
++            root.set(config); // update backing node
++            loader.save(root);
++            
++            // call after save
++            initWorlds(worldsNode);
++        } catch (Exception e) {
++            throw Throwables.propagate(e);
++        }
++    }
++    
++    private static void initWorlds(ConfigurationNode node) throws Exception {
++        worldConfigs.clear();
++        for (Map.Entry<Object, ? extends ConfigurationNode> entry : node.childrenMap().entrySet()) {
++            Object worldName = entry.getKey();
++            if (worldName.equals("default")) continue; // skip "default"
++            ConfigurationNode worldNode = entry.getValue();
++            
++            PandaSpigotWorldConfig worldConfig = worldNode.get(PandaSpigotWorldConfig.class);
++            
++            worldConfigs.put(worldName.toString(), worldConfig);
++        }
++    }
++    
++    public static PandaSpigotWorldConfig getWorldConfig(String worldName) {
++        return worldConfigs.getOrDefault(worldName, defaultWorldConfig);
++    }
++    
++    public static PandaSpigotWorldConfig getWorldConfig(World world) {
++        return getWorldConfig(world.worldData.getName());
++    }
++    
++    public static PandaSpigotConfig get() {
++        return config;
++    }
++    
++    //------------------------------------------------------------------------
++    @Comment("On servers with plugins that constantly churn through scoreboards, there is a risk of\n" +
++        "degraded GC performance due to the number of scoreboards held on by weak references.\n" +
++        "Most plugins don't even need the (vanilla) functionality that requires all plugin\n" +
++        "scoreboards to be tracked by the server. Instead, only track scoreboards when an\n" +
++        "objective is added with a non-dummy criteria.")
++    public boolean trackPluginScoreboards = false;
++
++    @Comment("Instructs the server how to handle player UUIDs and data when behind a proxy. Set to\n" +
++        "match your proxy's online-mode setting.")
++    public boolean proxyOnlineMode = true;
++
++    public boolean isProxyOnlineMode() {
++        return Bukkit.getOnlineMode() || (SpigotConfig.bungee && this.proxyOnlineMode);
++    }
++
++    public int maxBookPageSize = 2560;
++
++    public double maxBookTotalSizeMultiplier = 0.98d;
++
++    @Comment("Limits incoming packets from players. See Paper's documentation for more info:\n" +
++        "https://docs.papermc.io/paper/reference/paper-global-configuration#packet-limiter\n" +
++        "(note that \"max-packet-rate\" is renamed to \"maxPacketRate\")")
++    public PacketLimiterConfig packetLimiter = PacketLimiterConfig.createDefault();
++
++    public boolean resolveSelectorsInBooks = true;
++
++    @Comment("Whether player IP addresses should be logged by the server. This does not impact\n" +
++        "the ability of plugins to log the IP addresses of players.")
++    public boolean logPlayerIpAddresses = true;
++}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/config/PandaSpigotWorldConfig.java b/src/main/java/com/hpfxd/pandaspigot/config/PandaSpigotWorldConfig.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..360ed37b95fce68941c234615b465090b8ea7308
+--- /dev/null
++++ b/src/main/java/com/hpfxd/pandaspigot/config/PandaSpigotWorldConfig.java
+@@ -0,0 +1,65 @@
++package com.hpfxd.pandaspigot.config;
++
++import org.spongepowered.configurate.objectmapping.ConfigSerializable;
++import org.spongepowered.configurate.objectmapping.meta.Comment;
++
++@ConfigSerializable
++@SuppressWarnings({"FieldCanBeLocal", "FieldMayBeFinal"})
++public class PandaSpigotWorldConfig {
++    @Comment("How many ticks in between sending time updates to players?\n" +
++            "\n" +
++            "The vanilla option is 20 (every second), but PandaSpigot sets the default\n" +
++            "to 100 (every 5 seconds). You would probably be fine setting this even\n" +
++            "higher, unless you're constantly changing the time, or the server is lagging.")
++    public int timeUpdateFrequency = 100;
++    
++    @Comment("This option makes it so that when players are teleported to a location\n" +
++            "with the same rotation they currently have, the server will send a special\n" +
++            "packet indicating that the client should not update it's rotation at all.\n" +
++            "\n" +
++            "For example, normally constantly teleporting a player to their own location\n" +
++            "will make moving their head very difficult, especially for players with higher latency.\n" +
++            "With this option enabled, they will be able to move their head just like normal.")
++    public boolean smoothTeleportation = false;
++    
++    @Comment("When enabled, this option disables reading and writing player data such as:\n" +
++            "- Position\n" +
++            "- Inventory\n" +
++            "- Enderchest")
++    public boolean disablePlayerData = false;
++    
++    @Comment("When enabled, this option will disable saving world chunks.")
++    public boolean disableChunkSaving = false;
++    
++    @Comment("When enabled, entity AI will be disabled.\n" +
++            "\n" +
++            "This has the same effect as Spigot's \"nerf-spawner-mobs\" option, but applies to all entities.")
++    public boolean disableEntityAi = false;
++    
++    @Comment("This option controls whether or not to add a bit of randomness to an arrow's trajectory.\n" +
++            "By default, this is true (vanilla behaviour)")
++    public boolean randomArrowTrajectory = true;
++    
++    @Comment("These options control velocity players receive when damaged.")
++    public KnockbackConfig knockback;
++    
++    @ConfigSerializable
++    public static class KnockbackConfig {
++        public double friction = 2.0;
++        public double horizontal = 0.4;
++        public double vertical = 0.4;
++        public double verticalLimit = 0.4000000059604645;
++        public double extraHorizontal = 0.5;
++        public double extraVertical = 0.1;
++    }
++
++    public boolean optimizeTntMovement = false; // May not fully emulate vanilla behavior
++
++    public boolean optimizeLiquidExplosions = true; // This seems like a pretty sane default
++
++    public boolean optimizeArmorStandMovement = false; // Doesn't fully emulate vanilla behavior, see TacoSpigot issue #1
++	
++    @Comment("This option controls whether or not there is a chance for arrow crits to deal extra damage.\n" +
++            "By default, this is true (vanilla behaviour)")
++    public boolean randomArrowDamage = true;
++}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/console/PandaConsole.java b/src/main/java/com/hpfxd/pandaspigot/console/PandaConsole.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..25a515b681bbbb70946f2ec73647a6f184f81b3c
+--- /dev/null
++++ b/src/main/java/com/hpfxd/pandaspigot/console/PandaConsole.java
+@@ -0,0 +1,39 @@
++package com.hpfxd.pandaspigot.console;
++
++import net.minecraft.server.DedicatedServer;
++import net.minecrell.terminalconsole.SimpleTerminalConsole;
++import org.jline.reader.LineReader;
++import org.jline.reader.LineReaderBuilder;
++
++import java.nio.file.Paths;
++
++public class PandaConsole extends SimpleTerminalConsole {
++    private final DedicatedServer server;
++    
++    public PandaConsole(DedicatedServer server) {
++        this.server = server;
++    }
++    
++    @Override
++    protected boolean isRunning() {
++        return !this.server.isStopped() && this.server.isRunning();
++    }
++    
++    @Override
++    protected void runCommand(String command) {
++        this.server.issueCommand(command, this.server);
++    }
++    
++    @Override
++    protected void shutdown() {
++        this.server.safeShutdown();
++    }
++    
++    @Override
++    protected LineReader buildReader(LineReaderBuilder builder) {
++        return super.buildReader(builder
++            .appName("PandaSpigot")
++            .variable(LineReader.HISTORY_FILE, Paths.get(".console_history"))
++            .completer(new PandaConsoleCompleter(this.server)));
++    }
++}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/console/PandaConsoleCommandSender.java b/src/main/java/com/hpfxd/pandaspigot/console/PandaConsoleCommandSender.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..88a52389fef0d36925085296faccebfd851706b2
+--- /dev/null
++++ b/src/main/java/com/hpfxd/pandaspigot/console/PandaConsoleCommandSender.java
+@@ -0,0 +1,15 @@
++package com.hpfxd.pandaspigot.console;
++
++import org.apache.logging.log4j.LogManager;
++import org.apache.logging.log4j.Logger;
++import org.bukkit.craftbukkit.command.CraftConsoleCommandSender;
++
++public class PandaConsoleCommandSender extends CraftConsoleCommandSender {
++    private static final Logger LOGGER = LogManager.getRootLogger();
++    
++    @Override
++    public void sendRawMessage(String message) {
++        // TerminalConsoleAppender supports color codes directly in log messages
++        LOGGER.info(message);
++    }
++}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/console/PandaConsoleCompleter.java b/src/main/java/com/hpfxd/pandaspigot/console/PandaConsoleCompleter.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..ad68ab6618e3d13b1df59398471b95c955efd026
+--- /dev/null
++++ b/src/main/java/com/hpfxd/pandaspigot/console/PandaConsoleCompleter.java
+@@ -0,0 +1,95 @@
++package com.hpfxd.pandaspigot.console;
++
++import net.minecraft.server.DedicatedServer;
++import org.bukkit.craftbukkit.CraftServer;
++import org.bukkit.craftbukkit.util.Waitable;
++import org.bukkit.event.server.TabCompleteEvent;
++import org.jline.reader.Candidate;
++import org.jline.reader.Completer;
++import org.jline.reader.LineReader;
++import org.jline.reader.ParsedLine;
++
++import java.util.Collections;
++import java.util.List;
++import java.util.concurrent.ExecutionException;
++import java.util.logging.Level;
++
++public class PandaConsoleCompleter implements Completer {
++    private final DedicatedServer server;
++    
++    public PandaConsoleCompleter(DedicatedServer server) {
++        this.server = server;
++    }
++    
++    @Override
++    public void complete(LineReader reader, ParsedLine line, List<Candidate> candidates) {
++        // Async Tab Completion
++        com.destroystokyo.paper.event.server.AsyncTabCompleteEvent event;
++        java.util.List<String> completions = new java.util.ArrayList<>();
++        event = new com.destroystokyo.paper.event.server.AsyncTabCompleteEvent(server.server.getConsoleSender(), completions, line.line(), true, null);
++        server.server.getPluginManager().callEvent(event);
++        completions = event.isCancelled() ? com.google.common.collect.ImmutableList.of() : event.getCompletions();
++
++        if (event.isCancelled() || event.isHandled()) {
++            // Still fire sync event with the provided completions, if someone is listening
++            if (!event.isCancelled() && TabCompleteEvent.getHandlerList().getRegisteredListeners().length > 0) {
++                List<String> finalCompletions = completions;
++                Waitable<List<String>> syncCompletions = new Waitable<List<String>>() {
++                    @Override
++                    protected List<String> evaluate() {
++                        org.bukkit.event.server.TabCompleteEvent syncEvent = new org.bukkit.event.server.TabCompleteEvent(server.server.getConsoleSender(), line.line(), finalCompletions);
++                        server.server.getPluginManager().callEvent(event);
++                        return !syncEvent.isCancelled() ? syncEvent.getCompletions() : com.google.common.collect.ImmutableList.of();
++                    }
++                };
++                server.processQueue.add(syncCompletions);
++                try {
++                    completions = syncCompletions.get();
++                } catch (InterruptedException | ExecutionException e1) {
++                    e1.printStackTrace();
++                }
++            }
++
++            if (!completions.isEmpty()) {
++                candidates.addAll(completions.stream().map(Candidate::new).collect(java.util.stream.Collectors.toList()));
++            }
++            return;
++        }
++
++        CompletionWaiter waiter = new CompletionWaiter(line.line());
++        this.server.processQueue.add(waiter);
++        
++        try {
++            List<String> offers = waiter.get(); // wait until completions get processed on main thread
++            
++            for (String offer : offers) {
++                if (offer.isEmpty()) continue;
++                
++                candidates.add(new Candidate(offer));
++            }
++        } catch (ExecutionException e) {
++            this.server.server.getLogger().log(Level.WARNING, "Unhandled exception when tab completing", e);
++        } catch (InterruptedException e) {
++            Thread.currentThread().interrupt();
++        }
++    }
++    
++    private class CompletionWaiter extends Waitable<List<String>> {
++        private final String buffer;
++    
++        private CompletionWaiter(String buffer) {
++            this.buffer = buffer;
++        }
++    
++        @Override
++        protected List<String> evaluate() {
++            final CraftServer server = PandaConsoleCompleter.this.server.server;
++            final List<String> offers = server.getCommandMap().tabComplete(server.getConsoleSender(), buffer);
++
++            TabCompleteEvent tabEvent = new TabCompleteEvent(server.getConsoleSender(), buffer, offers == null ? Collections.emptyList() : offers);
++            server.getPluginManager().callEvent(tabEvent);
++
++            return tabEvent.isCancelled() ? Collections.emptyList() : tabEvent.getCompletions();
++        }
++    }
++}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/network/VarIntByteDecoder.java b/src/main/java/com/hpfxd/pandaspigot/network/VarIntByteDecoder.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..df2d56f9a0e38b165d03dbea9e02ecb4d14b1e78
+--- /dev/null
++++ b/src/main/java/com/hpfxd/pandaspigot/network/VarIntByteDecoder.java
+@@ -0,0 +1,50 @@
++package com.hpfxd.pandaspigot.network;
++
++import io.netty.util.ByteProcessor;
++
++public class VarIntByteDecoder implements ByteProcessor {
++    private int readVarint;
++    private int bytesRead;
++    private DecodeResult result = DecodeResult.TOO_SHORT;
++    
++    @Override
++    public boolean process(byte k) {
++        if (k == 0 && bytesRead == 0) {
++            // tentatively say it's invalid, but there's a possibility of redemption
++            result = DecodeResult.RUN_OF_ZEROES;
++            return true;
++        }
++        if (result == DecodeResult.RUN_OF_ZEROES) {
++            return false;
++        }
++        readVarint |= (k & 0x7F) << bytesRead++ * 7;
++        if (bytesRead > 3) {
++            result = DecodeResult.TOO_BIG;
++            return false;
++        }
++        if ((k & 0x80) != 128) {
++            result = DecodeResult.SUCCESS;
++            return false;
++        }
++        return true;
++    }
++    
++    public int getReadVarint() {
++        return readVarint;
++    }
++    
++    public int getBytesRead() {
++        return bytesRead;
++    }
++    
++    public DecodeResult getResult() {
++        return result;
++    }
++    
++    public enum DecodeResult {
++        SUCCESS,
++        TOO_SHORT,
++        TOO_BIG,
++        RUN_OF_ZEROES
++    }
++}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/network/VarIntUtil.java b/src/main/java/com/hpfxd/pandaspigot/network/VarIntUtil.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..c0040dd80559d30f963eb952f6ef3372d38f7208
+--- /dev/null
++++ b/src/main/java/com/hpfxd/pandaspigot/network/VarIntUtil.java
+@@ -0,0 +1,114 @@
++package com.hpfxd.pandaspigot.network;
++
++import io.netty.buffer.ByteBuf;
++import io.netty.handler.codec.CorruptedFrameException;
++
++public class VarIntUtil {
++    private static final int[] VARINT_EXACT_BYTE_LENGTHS = new int[33];
++    
++    static {
++        for (int i = 0; i <= 32; ++i) {
++            VARINT_EXACT_BYTE_LENGTHS[i] = (int) Math.ceil((31d - (i - 1)) / 7d);
++        }
++        VARINT_EXACT_BYTE_LENGTHS[32] = 1; // Special case for the number 0.
++    }
++    
++    /**
++     * Reads a Minecraft-style VarInt from the specified {@code buf}.
++     *
++     * @param buf the buffer to read from
++     * @return the decoded VarInt
++     */
++    public static int readVarInt(ByteBuf buf) {
++        int read = readVarIntSafely(buf);
++        if (read == Integer.MIN_VALUE) {
++            throw new CorruptedFrameException("Bad VarInt decoded");
++        }
++        return read;
++    }
++    
++    /**
++     * Reads a Minecraft-style VarInt from the specified {@code buf}. The difference between this
++     * method and {@link #readVarInt(ByteBuf)} is that this function returns a sentinel value if the
++     * varint is invalid.
++     *
++     * @param buf the buffer to read from
++     * @return the decoded VarInt, or {@code Integer.MIN_VALUE} if the varint is invalid
++     */
++    public static int readVarIntSafely(ByteBuf buf) {
++        int i = 0;
++        int maxRead = Math.min(5, buf.readableBytes());
++        for (int j = 0; j < maxRead; j++) {
++            int k = buf.readByte();
++            i |= (k & 0x7F) << j * 7;
++            if ((k & 0x80) != 128) {
++                return i;
++            }
++        }
++        return Integer.MIN_VALUE;
++    }
++    
++    /**
++     * Returns the exact byte size of {@code value} if it were encoded as a VarInt.
++     *
++     * @param value the value to encode
++     * @return the byte size of {@code value} if encoded as a VarInt
++     */
++    public static int varIntBytes(int value) {
++        return VARINT_EXACT_BYTE_LENGTHS[Integer.numberOfLeadingZeros(value)];
++    }
++    
++    /**
++     * Writes a Minecraft-style VarInt to the specified {@code buf}.
++     *
++     * @param buf   the buffer to read from
++     * @param value the integer to write
++     */
++    public static void writeVarInt(ByteBuf buf, int value) {
++        // Peel the one and two byte count cases explicitly as they are the most common VarInt sizes
++        // that the proxy will write, to improve inlining.
++        if ((value & (0xFFFFFFFF << 7)) == 0) {
++            buf.writeByte(value);
++        } else if ((value & (0xFFFFFFFF << 14)) == 0) {
++            int w = (value & 0x7F | 0x80) << 8 | (value >>> 7);
++            buf.writeShort(w);
++        } else {
++            writeVarIntFull(buf, value);
++        }
++    }
++    
++    private static void writeVarIntFull(ByteBuf buf, int value) {
++        // See https://steinborn.me/posts/performance/how-fast-can-you-write-a-varint/
++        if ((value & (0xFFFFFFFF << 7)) == 0) {
++            buf.writeByte(value);
++        } else if ((value & (0xFFFFFFFF << 14)) == 0) {
++            int w = (value & 0x7F | 0x80) << 8 | (value >>> 7);
++            buf.writeShort(w);
++        } else if ((value & (0xFFFFFFFF << 21)) == 0) {
++            int w = (value & 0x7F | 0x80) << 16 | ((value >>> 7) & 0x7F | 0x80) << 8 | (value >>> 14);
++            buf.writeMedium(w);
++        } else if ((value & (0xFFFFFFFF << 28)) == 0) {
++            int w = (value & 0x7F | 0x80) << 24 | (((value >>> 7) & 0x7F | 0x80) << 16)
++                | ((value >>> 14) & 0x7F | 0x80) << 8 | (value >>> 21);
++            buf.writeInt(w);
++        } else {
++            int w = (value & 0x7F | 0x80) << 24 | ((value >>> 7) & 0x7F | 0x80) << 16
++                | ((value >>> 14) & 0x7F | 0x80) << 8 | ((value >>> 21) & 0x7F | 0x80);
++            buf.writeInt(w);
++            buf.writeByte(value >>> 28);
++        }
++    }
++    
++    /**
++     * Writes the specified {@code value} as a 21-bit Minecraft VarInt to the specified {@code buf}.
++     * The upper 11 bits will be discarded.
++     *
++     * @param buf   the buffer to read from
++     * @param value the integer to write
++     */
++    public static void write21BitVarInt(ByteBuf buf, int value) {
++        // See https://steinborn.me/posts/performance/how-fast-can-you-write-a-varint/
++        int w = (value & 0x7F | 0x80) << 16 | ((value >>> 7) & 0x7F | 0x80) << 8 | (value >>> 14);
++        buf.writeMedium(w);
++    }
++}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/tickloop/IAsyncHandler.java b/src/main/java/com/hpfxd/pandaspigot/tickloop/IAsyncHandler.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..28d8bb697cc9dd1520d3a46aec1c856765b1452f
+--- /dev/null
++++ b/src/main/java/com/hpfxd/pandaspigot/tickloop/IAsyncHandler.java
+@@ -0,0 +1,141 @@
++package com.hpfxd.pandaspigot.tickloop;
++
++import org.apache.logging.log4j.LogManager;
++import org.apache.logging.log4j.Logger;
++
++import java.util.Queue;
++import java.util.concurrent.CompletableFuture;
++import java.util.concurrent.ConcurrentLinkedQueue;
++import java.util.concurrent.Executor;
++import java.util.concurrent.locks.LockSupport;
++import java.util.function.BooleanSupplier;
++import java.util.function.Supplier;
++
++public abstract class IAsyncHandler<R extends Runnable> implements Executor {
++    private static final Logger LOGGER = LogManager.getLogger();
++    private final String name;
++    private final Queue<R> pendingRunnables = new ConcurrentLinkedQueue<>();
++    private int terminateCount;
++
++    protected IAsyncHandler(String name) {
++        this.name = name;
++    }
++
++    protected abstract R packUpRunnable(Runnable runnable);
++
++    protected abstract boolean shouldRun(R task);
++
++    public boolean isMainThread() {
++        return Thread.currentThread() == this.getMainThread();
++    }
++
++    protected abstract Thread getMainThread();
++
++    protected boolean executables() {
++        return !this.isMainThread();
++    }
++
++    public int getPendingRunnables() {
++        return this.pendingRunnables.size();
++    }
++
++    public String getName() {
++        return this.name;
++    }
++
++    public <V> CompletableFuture<V> submit(Supplier<V> task) {
++        return this.executables() ? CompletableFuture.supplyAsync(task, this)
++            : CompletableFuture.completedFuture(task.get());
++    }
++
++    private CompletableFuture<Void> submitAsync(Runnable runnable) {
++        return CompletableFuture.supplyAsync(() -> {
++            runnable.run();
++            return null;
++        }, this);
++    }
++
++    public CompletableFuture<Void> submit(Runnable task) {
++        if (this.executables()) {
++            return this.submitAsync(task);
++        } else {
++            task.run();
++            return CompletableFuture.completedFuture(null);
++        }
++    }
++
++    public void performBlocking(Runnable runnable) {
++        if (!this.isMainThread()) {
++            this.submitAsync(runnable).join();
++        } else {
++            runnable.run();
++        }
++
++    }
++
++    public void call(R runnable) {
++        this.pendingRunnables.add(runnable);
++        LockSupport.unpark(this.getMainThread());
++    }
++
++    @Override
++    public void execute(Runnable runnable) {
++        if (this.executables()) {
++            this.call(this.packUpRunnable(runnable));
++        } else {
++            runnable.run();
++        }
++
++    }
++
++    protected void clearAllRunnable() {
++        this.pendingRunnables.clear();
++    }
++
++    public void runAllRunnable() {
++        while (this.drawRunnable()) {
++        }
++    }
++
++    public boolean drawRunnable() {
++        R runnable = this.pendingRunnables.peek();
++        if (runnable == null) {
++            return false;
++        } else if (this.terminateCount == 0 && !this.shouldRun(runnable)) {
++            return false;
++        } else {
++            this.doRunnable(this.pendingRunnables.remove());
++            return true;
++        }
++    }
++
++    public void controlTerminate(BooleanSupplier stopCondition) {
++        ++this.terminateCount;
++
++        try {
++            while (!stopCondition.getAsBoolean()) {
++                if (!this.drawRunnable()) {
++                    this.waitForRuns();
++                }
++            }
++        } finally {
++            --this.terminateCount;
++        }
++
++    }
++
++    protected void waitForRuns() {
++        Thread.yield();
++        LockSupport.parkNanos("waiting for tasks", 100000L);
++    }
++
++    protected void doRunnable(R task) {
++        try {
++            task.run();
++        } catch (Exception e) {
++            if (e.getCause() instanceof ThreadDeath) throw e;
++            LOGGER.fatal("Error executing task on {}", this.getName(), e);
++        }
++
++    }
++}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/tickloop/ReentrantIAsyncHandler.java b/src/main/java/com/hpfxd/pandaspigot/tickloop/ReentrantIAsyncHandler.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..0d4564457d853ac16b069680e82e16a6b5610093
+--- /dev/null
++++ b/src/main/java/com/hpfxd/pandaspigot/tickloop/ReentrantIAsyncHandler.java
+@@ -0,0 +1,29 @@
++package com.hpfxd.pandaspigot.tickloop;
++
++public abstract class ReentrantIAsyncHandler<R extends Runnable> extends IAsyncHandler<R> {
++
++    private int count;
++
++    public ReentrantIAsyncHandler(String name) {
++        super(name);
++    }
++
++    @Override
++    protected boolean executables() {
++        return this.runningTask() || super.executables();
++    }
++
++    protected boolean runningTask() {
++        return this.count != 0;
++    }
++
++    @Override
++    protected void doRunnable(R task) {
++        ++this.count;
++        try {
++            super.doRunnable(task);
++        } finally {
++            --this.count;
++        }
++    }
++}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/tickloop/TasksPerTick.java b/src/main/java/com/hpfxd/pandaspigot/tickloop/TasksPerTick.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..c6dd7e4933ef93cb887ccf937af34d07398985e7
+--- /dev/null
++++ b/src/main/java/com/hpfxd/pandaspigot/tickloop/TasksPerTick.java
+@@ -0,0 +1,20 @@
++package com.hpfxd.pandaspigot.tickloop;
++
++public class TasksPerTick implements Runnable {
++    private final int tick;
++    private final Runnable task;
++
++    public TasksPerTick(int creationTicks, Runnable task) {
++        this.tick = creationTicks;
++        this.task = task;
++    }
++
++    public int getTick() {
++        return tick;
++    }
++
++    @Override
++    public void run() {
++        task.run();
++    }
++}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/util/IntervalledCounter.java b/src/main/java/com/hpfxd/pandaspigot/util/IntervalledCounter.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..d61d44e8e1126ed3bea6e633cc0bdebb0a148828
+--- /dev/null
++++ b/src/main/java/com/hpfxd/pandaspigot/util/IntervalledCounter.java
+@@ -0,0 +1,116 @@
++package com.hpfxd.pandaspigot.util;
++
++// Originally from PaperMC
++public final class IntervalledCounter {
++
++    protected long[] times;
++    protected long[] counts;
++    protected final long interval;
++    protected long minTime;
++    protected long sum;
++    protected int head; // inclusive
++    protected int tail; // exclusive
++
++    public IntervalledCounter(final long interval) {
++        this.times = new long[8];
++        this.counts = new long[8];
++        this.interval = interval;
++    }
++
++    public void updateCurrentTime() {
++        this.updateCurrentTime(System.nanoTime());
++    }
++
++    public void updateCurrentTime(final long currentTime) {
++        long sum = this.sum;
++        int head = this.head;
++        final int tail = this.tail;
++        final long minTime = currentTime - this.interval;
++
++        final int arrayLen = this.times.length;
++
++        // guard against overflow by using subtraction
++        while (head != tail && this.times[head] - minTime < 0) {
++            sum -= this.counts[head];
++            // there are two ways we can do this:
++            // 1. free the count when adding
++            // 2. free it now
++            // option #2
++            this.counts[head] = 0;
++            if (++head >= arrayLen) {
++                head = 0;
++            }
++        }
++
++        this.sum = sum;
++        this.head = head;
++        this.minTime = minTime;
++    }
++
++    public void addTime(final long currTime) {
++        this.addTime(currTime, 1L);
++    }
++
++    public void addTime(final long currTime, final long count) {
++        // guard against overflow by using subtraction
++        if (currTime - this.minTime < 0) {
++            return;
++        }
++        int nextTail = (this.tail + 1) % this.times.length;
++        if (nextTail == this.head) {
++            this.resize();
++            nextTail = (this.tail + 1) % this.times.length;
++        }
++
++        this.times[this.tail] = currTime;
++        this.counts[this.tail] += count;
++        this.sum += count;
++        this.tail = nextTail;
++    }
++
++    public void updateAndAdd(final int count) {
++        final long currTime = System.nanoTime();
++        this.updateCurrentTime(currTime);
++        this.addTime(currTime, count);
++    }
++
++    public void updateAndAdd(final int count, final long currTime) {
++        this.updateCurrentTime(currTime);
++        this.addTime(currTime, count);
++    }
++
++    private void resize() {
++        final long[] oldElements = this.times;
++        final long[] oldCounts = this.counts;
++        final long[] newElements = new long[this.times.length * 2];
++        final long[] newCounts = new long[this.times.length * 2];
++        this.times = newElements;
++        this.counts = newCounts;
++
++        final int head = this.head;
++        final int tail = this.tail;
++        final int size = tail >= head ? (tail - head) : (tail + (oldElements.length - head));
++        this.head = 0;
++        this.tail = size;
++
++        if (tail >= head) {
++            System.arraycopy(oldElements, head, newElements, 0, size);
++            System.arraycopy(oldCounts, head, newCounts, 0, size);
++        } else {
++            System.arraycopy(oldElements, head, newElements, 0, oldElements.length - head);
++            System.arraycopy(oldElements, 0, newElements, oldElements.length - head, tail);
++
++            System.arraycopy(oldCounts, head, newCounts, 0, oldCounts.length - head);
++            System.arraycopy(oldCounts, 0, newCounts, oldCounts.length - head, tail);
++        }
++    }
++
++    // returns in units per second
++    public double getRate() {
++        return this.size() / (this.interval * 1.0e-9);
++    }
++
++    public long size() {
++        return this.sum;
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/EntityBat.java b/src/main/java/net/minecraft/server/EntityBat.java
+index 52416203a74782a9dc56754f71f6f064c2fe9d3d..3183a41f846e0d4ccc44a3cba1bef8ddc890ea7c 100644
+--- a/src/main/java/net/minecraft/server/EntityBat.java
++++ b/src/main/java/net/minecraft/server/EntityBat.java
+@@ -14,7 +14,7 @@ public class EntityBat extends EntityAmbient {
+ 
+     protected void h() {
+         super.h();
+-        this.datawatcher.a(16, new Byte((byte) 0));
++        this.datawatcher.a(16, (byte) 0);
+     }
+ 
+     protected float bB() {
+diff --git a/src/main/java/net/minecraft/server/EntityBlaze.java b/src/main/java/net/minecraft/server/EntityBlaze.java
+index c6b711385d3ee6627966a401c8d4f34044a30b8b..05d3361428362f065c807a10c9d5f6e5be13ec22 100644
+--- a/src/main/java/net/minecraft/server/EntityBlaze.java
++++ b/src/main/java/net/minecraft/server/EntityBlaze.java
+@@ -27,7 +27,7 @@ public class EntityBlaze extends EntityMonster {
+ 
+     protected void h() {
+         super.h();
+-        this.datawatcher.a(16, new Byte((byte) 0));
++        this.datawatcher.a(16, (byte) 0);
+     }
+ 
+     protected String z() {
+diff --git a/src/main/java/net/minecraft/server/EntityBoat.java b/src/main/java/net/minecraft/server/EntityBoat.java
+index 0e6f8c03501dd6ce5bda003ae54729763201ebd3..2d40ba90fd50eaf34e0b4709414e8f05bb984f97 100644
+--- a/src/main/java/net/minecraft/server/EntityBoat.java
++++ b/src/main/java/net/minecraft/server/EntityBoat.java
+@@ -57,9 +57,9 @@ public class EntityBoat extends Entity {
+     }
+ 
+     protected void h() {
+-        this.datawatcher.a(17, new Integer(0));
+-        this.datawatcher.a(18, new Integer(1));
+-        this.datawatcher.a(19, new Float(0.0F));
++        this.datawatcher.a(17, 0);
++        this.datawatcher.a(18, 1);
++        this.datawatcher.a(19, 0.0F);
+     }
+ 
+     public AxisAlignedBB j(Entity entity) {
+diff --git a/src/main/java/net/minecraft/server/EntityEnderman.java b/src/main/java/net/minecraft/server/EntityEnderman.java
+index f3afbbd3a20ebf7d51a8fac418cff3e6f59ab56f..df797ffb10b894879f548c265f5ec2b6ca610d29 100644
+--- a/src/main/java/net/minecraft/server/EntityEnderman.java
++++ b/src/main/java/net/minecraft/server/EntityEnderman.java
+@@ -55,9 +55,9 @@ public class EntityEnderman extends EntityMonster {
+ 
+     protected void h() {
+         super.h();
+-        this.datawatcher.a(16, new Short((short) 0));
+-        this.datawatcher.a(17, new Byte((byte) 0));
+-        this.datawatcher.a(18, new Byte((byte) 0));
++        this.datawatcher.a(16, (short) 0);
++        this.datawatcher.a(17, (byte) 0);
++        this.datawatcher.a(18, (byte) 0);
+     }
+ 
+     public void b(NBTTagCompound nbttagcompound) {
+diff --git a/src/main/java/net/minecraft/server/EntityMinecartFurnace.java b/src/main/java/net/minecraft/server/EntityMinecartFurnace.java
+index 908620d41116f7d0474b11ec823acf8222bebe80..40ca81e8000b497e65d3ec6d62be96e66b578220 100644
+--- a/src/main/java/net/minecraft/server/EntityMinecartFurnace.java
++++ b/src/main/java/net/minecraft/server/EntityMinecartFurnace.java
+@@ -20,7 +20,7 @@ public class EntityMinecartFurnace extends EntityMinecartAbstract {
+ 
+     protected void h() {
+         super.h();
+-        this.datawatcher.a(16, new Byte((byte) 0));
++        this.datawatcher.a(16, (byte) 0);
+     }
+ 
+     public void t_() {
+diff --git a/src/main/java/net/minecraft/server/EntitySheep.java b/src/main/java/net/minecraft/server/EntitySheep.java
+index 29611a194b8a582d57159231091c66adb7c6944f..e1baf50ebc6ba7e2df799e09a78fbee6e4ec8177 100644
+--- a/src/main/java/net/minecraft/server/EntitySheep.java
++++ b/src/main/java/net/minecraft/server/EntitySheep.java
+@@ -71,7 +71,7 @@ public class EntitySheep extends EntityAnimal {
+ 
+     protected void h() {
+         super.h();
+-        this.datawatcher.a(16, new Byte((byte) 0));
++        this.datawatcher.a(16, (byte) 0);
+     }
+ 
+     protected void dropDeathLoot(boolean flag, int i) {
+diff --git a/src/main/java/net/minecraft/server/EntitySkeleton.java b/src/main/java/net/minecraft/server/EntitySkeleton.java
+index 46bff95d8bf73e34eb8e0a9b94fb9fa9e9cc5cfb..cbd5fd36151af716f0ade99f8a43b4f4b4c22b5f 100644
+--- a/src/main/java/net/minecraft/server/EntitySkeleton.java
++++ b/src/main/java/net/minecraft/server/EntitySkeleton.java
+@@ -34,7 +34,7 @@ public class EntitySkeleton extends EntityMonster implements IRangedEntity {
+ 
+     protected void h() {
+         super.h();
+-        this.datawatcher.a(13, new Byte((byte) 0));
++        this.datawatcher.a(13, (byte) 0);
+     }
+ 
+     protected String z() {
+diff --git a/src/main/java/net/minecraft/server/EntitySpider.java b/src/main/java/net/minecraft/server/EntitySpider.java
+index 68a253c9698d2b239e400d7a9406c4430072cc33..4b17765b001774dfc06023002a4c7bbc8f1a1b43 100644
+--- a/src/main/java/net/minecraft/server/EntitySpider.java
++++ b/src/main/java/net/minecraft/server/EntitySpider.java
+@@ -29,7 +29,7 @@ public class EntitySpider extends EntityMonster {
+ 
+     protected void h() {
+         super.h();
+-        this.datawatcher.a(16, new Byte((byte) 0));
++        this.datawatcher.a(16, (byte) 0);
+     }
+ 
+     public void t_() {
+diff --git a/src/main/java/net/minecraft/server/EntityWither.java b/src/main/java/net/minecraft/server/EntityWither.java
+index fb19bad3c01b03991f9dbaff6041acbccda3c8b3..6a29a83b3a1fce396aa5213012ab589c3280069d 100644
+--- a/src/main/java/net/minecraft/server/EntityWither.java
++++ b/src/main/java/net/minecraft/server/EntityWither.java
+@@ -48,10 +48,11 @@ public class EntityWither extends EntityMonster implements IRangedEntity {
+ 
+     protected void h() {
+         super.h();
+-        this.datawatcher.a(17, new Integer(0));
+-        this.datawatcher.a(18, new Integer(0));
+-        this.datawatcher.a(19, new Integer(0));
+-        this.datawatcher.a(20, new Integer(0));
++        this.datawatcher.a(17,0);
++        this.datawatcher.a(17, 0);
++        this.datawatcher.a(18, 0);
++        this.datawatcher.a(19, 0);
++        this.datawatcher.a(20, 0);
+     }
+ 
+     public void b(NBTTagCompound nbttagcompound) {
+diff --git a/src/main/java/net/minecraft/server/EntityWolf.java b/src/main/java/net/minecraft/server/EntityWolf.java
+index 469c87a179b452b5df06e79a6bc1d8e7fce07965..01daab0b2788a6e206530a5c1932ff87af298b56 100644
+--- a/src/main/java/net/minecraft/server/EntityWolf.java
++++ b/src/main/java/net/minecraft/server/EntityWolf.java
+@@ -87,9 +87,9 @@ public class EntityWolf extends EntityTameableAnimal {
+ 
+     protected void h() {
+         super.h();
+-        this.datawatcher.a(18, new Float(this.getHealth()));
+-        this.datawatcher.a(19, new Byte((byte) 0));
+-        this.datawatcher.a(20, new Byte((byte) EnumColor.RED.getColorIndex()));
++        this.datawatcher.a(18, this.getHealth());
++        this.datawatcher.a(19, (byte) 0);
++        this.datawatcher.a(20, (byte) EnumColor.RED.getColorIndex());
+     }
+ 
+     protected void a(BlockPosition blockposition, Block block) {
+diff --git a/src/main/java/net/minecraft/server/PacketDataSerializer.java b/src/main/java/net/minecraft/server/PacketDataSerializer.java
+index e2eb305468ff76026dc9b24d59394cfc94501273..dd87c366dff0718ab58956e66e51f1f5b534a29c 100644
+--- a/src/main/java/net/minecraft/server/PacketDataSerializer.java
++++ b/src/main/java/net/minecraft/server/PacketDataSerializer.java
+@@ -20,6 +20,10 @@ import java.nio.channels.GatheringByteChannel;
+ import java.nio.channels.ScatteringByteChannel;
+ import java.nio.charset.Charset;
+ import java.util.UUID;
++// PandaSpigot start
++import io.netty.util.ByteProcessor;
++import java.nio.channels.FileChannel;
++// PandaSpigot end
+ 
+ import org.bukkit.craftbukkit.inventory.CraftItemStack; // CraftBukkit
+ 
+@@ -27,7 +31,21 @@ public class PacketDataSerializer extends ByteBuf {
+ 
+     private final ByteBuf a;
+ 
++    // PandaSpigot start - large packet limit
++    private static final int DEFAULT_LIMIT = Short.MAX_VALUE;
++    private static final int LARGE_PACKET_LIMIT = Short.MAX_VALUE * 1024;
++    private final boolean allowLargePackets;
+     public PacketDataSerializer(ByteBuf bytebuf) {
++        /*
++         * By default, we limit the size of the received byte array to Short.MAX_VALUE, which is 31 KB.
++         * However, we make an exception when ProtocolSupport is installed, to allow 1.7 clients to work,
++         * and limit them to 31 MEGABYTES as they seem to need to send larger packets sometimes.
++         * Although a 31 MB limit leaves the server slightly vulnerable,
++         * it's still much better than the old system of having no limit,
++         * which would leave the server vulnerable to packets up to 2 GIGABYTES in size.
++         */
++        this.allowLargePackets = com.hpfxd.pandaspigot.CompatHacks.hasProtocolSupport();
++        // PandaSpigot end
+         this.a = bytebuf;
+     }
+ 
+@@ -48,14 +66,14 @@ public class PacketDataSerializer extends ByteBuf {
+ 
+     // Paper start
+     public byte[] a() {
+-        return readByteArray(Short.MAX_VALUE);
++        return readByteArray(this.allowLargePackets ? LARGE_PACKET_LIMIT : DEFAULT_LIMIT); // PandaSpigot - large packet limit
+     }
+ 
+     public byte[]readByteArray(int limit) {
+         int len = this.e();
+         if (len > limit) throw new DecoderException("The received a byte array longer than allowed " + len + " > " + limit);
+         byte[] abyte = new byte[len];
+-    // Paper end
++        // Paper end
+ 
+         this.readBytes(abyte);
+         return abyte;
+@@ -86,20 +104,7 @@ public class PacketDataSerializer extends ByteBuf {
+     }
+ 
+     public int e() {
+-        int i = 0;
+-        int j = 0;
+-
+-        byte b0;
+-
+-        do {
+-            b0 = this.readByte();
+-            i |= (b0 & 127) << j++ * 7;
+-            if (j > 5) {
+-                throw new RuntimeException("VarInt too big");
+-            }
+-        } while ((b0 & 128) == 128);
+-
+-        return i;
++        return com.hpfxd.pandaspigot.network.VarIntUtil.readVarInt(this.a); // PandaSpigot - Optimize VarInt reading
+     }
+ 
+     public long f() {
+@@ -129,12 +134,7 @@ public class PacketDataSerializer extends ByteBuf {
+     }
+ 
+     public void b(int i) {
+-        while ((i & -128) != 0) {
+-            this.writeByte(i & 127 | 128);
+-            i >>>= 7;
+-        }
+-
+-        this.writeByte(i);
++        com.hpfxd.pandaspigot.network.VarIntUtil.writeVarInt(this.a, i); // PandaSpigot - Optimize VarInt writing
+     }
+ 
+     public void b(long i) {
+@@ -167,7 +167,7 @@ public class PacketDataSerializer extends ByteBuf {
+             return null;
+         } else {
+             this.readerIndex(i);
+-            return NBTCompressedStreamTools.a((DataInput) (new ByteBufInputStream(this)), new NBTReadLimiter(2097152L));
++            return NBTCompressedStreamTools.a((DataInput) (new ByteBufInputStream(this)), new NBTReadLimiter(50000L)); // PandaSpigot - Reduce NBT Read Limiter
+         }
+     }
+ 
+@@ -221,7 +221,11 @@ public class PacketDataSerializer extends ByteBuf {
+         } else if (j < 0) {
+             throw new DecoderException("The received encoded string buffer length is less than zero! Weird string!");
+         } else {
+-            String s = new String(this.readBytes(j).array(), Charsets.UTF_8);
++            // PandaSpigot start - Switch from readBytes().array() to readBytes(byte[]) as we could be dealing with a DirectByteBuf
++            byte[] b = new byte[j];
++            this.readBytes(b);
++            String s = new String(b, Charsets.UTF_8);
++            // PandaSpigot end
+ 
+             if (s.length() > i) {
+                 throw new DecoderException("The received string length is longer than maximum allowed (" + j + " > " + i + ")");
+@@ -232,15 +236,16 @@ public class PacketDataSerializer extends ByteBuf {
+     }
+ 
+     public PacketDataSerializer a(String s) {
+-        byte[] abyte = s.getBytes(Charsets.UTF_8);
+-
+-        if (abyte.length > 32767) {
++        // PandaSpigot start - Optimize string writing
++        int utf8Bytes = io.netty.buffer.ByteBufUtil.utf8Bytes(s);
++        if (utf8Bytes > 32767) {
+             throw new EncoderException("String too big (was " + s.length() + " bytes encoded, max " + 32767 + ")");
+         } else {
+-            this.b(abyte.length);
+-            this.writeBytes(abyte);
++            this.b(utf8Bytes);
++            this.writeCharSequence(s, Charsets.UTF_8);
+             return this;
+         }
++        // PandaSpigot end
+     }
+ 
+     public int capacity() {
+@@ -822,4 +827,266 @@ public class PacketDataSerializer extends ByteBuf {
+     public boolean release(int i) {
+         return this.a.release(i);
+     }
++
++    // PandaSpigot start - Delegate new Netty 4.1 methods.
++    @Override
++    public boolean isReadOnly() {
++        return a.isReadOnly();
++    }
++
++    @Override
++    public ByteBuf asReadOnly() {
++        return a.asReadOnly();
++    }
++
++    @Override
++    public int maxFastWritableBytes() {
++        return a.maxFastWritableBytes();
++    }
++
++    @Override
++    public short getShortLE(int index) {
++        return a.getShortLE(index);
++    }
++
++    @Override
++    public int getUnsignedShortLE(int index) {
++        return a.getUnsignedShortLE(index);
++    }
++
++    @Override
++    public int getMediumLE(int index) {
++        return a.getMediumLE(index);
++    }
++
++    @Override
++    public int getUnsignedMediumLE(int index) {
++        return a.getUnsignedMediumLE(index);
++    }
++
++    @Override
++    public int getIntLE(int index) {
++        return a.getIntLE(index);
++    }
++
++    @Override
++    public long getUnsignedIntLE(int index) {
++        return a.getUnsignedIntLE(index);
++    }
++
++    @Override
++    public long getLongLE(int index) {
++        return a.getLongLE(index);
++    }
++
++    @Override
++    public float getFloatLE(int index) {
++        return a.getFloatLE(index);
++    }
++
++    @Override
++    public double getDoubleLE(int index) {
++        return a.getDoubleLE(index);
++    }
++
++    @Override
++    public int getBytes(int index, FileChannel out, long position, int length) throws IOException {
++        return a.getBytes(index, out, position, length);
++    }
++
++    @Override
++    public CharSequence getCharSequence(int index, int length, Charset charset) {
++        return a.getCharSequence(index, length, charset);
++    }
++
++    @Override
++    public ByteBuf setShortLE(int index, int value) {
++        return a.setShortLE(index, value);
++    }
++
++    @Override
++    public ByteBuf setMediumLE(int index, int value) {
++        return a.setMediumLE(index, value);
++    }
++
++    @Override
++    public ByteBuf setIntLE(int index, int value) {
++        return a.setIntLE(index, value);
++    }
++
++    @Override
++    public ByteBuf setLongLE(int index, long value) {
++        return a.setLongLE(index, value);
++    }
++
++    @Override
++    public ByteBuf setFloatLE(int index, float value) {
++        return a.setFloatLE(index, value);
++    }
++
++    @Override
++    public ByteBuf setDoubleLE(int index, double value) {
++        return a.setDoubleLE(index, value);
++    }
++
++    @Override
++    public int setBytes(int index, FileChannel in, long position, int length) throws IOException {
++        return a.setBytes(index, in, position, length);
++    }
++
++    @Override
++    public int setCharSequence(int index, CharSequence sequence, Charset charset) {
++        return a.setCharSequence(index, sequence, charset);
++    }
++
++    @Override
++    public short readShortLE() {
++        return a.readShortLE();
++    }
++
++    @Override
++    public int readUnsignedShortLE() {
++        return a.readUnsignedShortLE();
++    }
++
++    @Override
++    public int readMediumLE() {
++        return a.readMediumLE();
++    }
++
++    @Override
++    public int readUnsignedMediumLE() {
++        return a.readUnsignedMediumLE();
++    }
++
++    @Override
++    public int readIntLE() {
++        return a.readIntLE();
++    }
++
++    @Override
++    public long readUnsignedIntLE() {
++        return a.readUnsignedIntLE();
++    }
++
++    @Override
++    public long readLongLE() {
++        return a.readLongLE();
++    }
++
++    @Override
++    public float readFloatLE() {
++        return a.readFloatLE();
++    }
++
++    @Override
++    public double readDoubleLE() {
++        return a.readDoubleLE();
++    }
++
++    @Override
++    public ByteBuf readRetainedSlice(int length) {
++        return a.readRetainedSlice(length);
++    }
++
++    @Override
++    public CharSequence readCharSequence(int length, Charset charset) {
++        return a.readCharSequence(length, charset);
++    }
++
++    @Override
++    public int readBytes(FileChannel out, long position, int length) throws IOException {
++        return a.readBytes(out, position, length);
++    }
++
++    @Override
++    public ByteBuf writeShortLE(int value) {
++        return a.writeShortLE(value);
++    }
++
++    @Override
++    public ByteBuf writeMediumLE(int value) {
++        return a.writeMediumLE(value);
++    }
++
++    @Override
++    public ByteBuf writeIntLE(int value) {
++        return a.writeIntLE(value);
++    }
++
++    @Override
++    public ByteBuf writeLongLE(long value) {
++        return a.writeLongLE(value);
++    }
++
++    @Override
++    public ByteBuf writeFloatLE(float value) {
++        return a.writeFloatLE(value);
++    }
++
++    @Override
++    public ByteBuf writeDoubleLE(double value) {
++        return a.writeDoubleLE(value);
++    }
++
++    @Override
++    public int writeBytes(FileChannel in, long position, int length) throws IOException {
++        return a.writeBytes(in, position, length);
++    }
++
++    @Override
++    public int writeCharSequence(CharSequence sequence, Charset charset) {
++        return a.writeCharSequence(sequence, charset);
++    }
++
++    @Override
++    public int forEachByte(ByteProcessor processor) {
++        return a.forEachByte(processor);
++    }
++
++    @Override
++    public int forEachByte(int index, int length, ByteProcessor processor) {
++        return a.forEachByte(index, length, processor);
++    }
++
++    @Override
++    public int forEachByteDesc(ByteProcessor processor) {
++        return a.forEachByteDesc(processor);
++    }
++
++    @Override
++    public int forEachByteDesc(int index, int length, ByteProcessor processor) {
++        return a.forEachByteDesc(index, length, processor);
++    }
++
++    @Override
++    public ByteBuf retainedSlice() {
++        return a.retainedSlice();
++    }
++
++    @Override
++    public ByteBuf retainedSlice(int index, int length) {
++        return a.retainedSlice(index, length);
++    }
++
++    @Override
++    public ByteBuf retainedDuplicate() {
++        return a.retainedDuplicate();
++    }
++
++    @Override
++    public boolean isContiguous() {
++        return a.isContiguous();
++    }
++
++    @Override
++    public ByteBuf touch() {
++        return a.touch();
++    }
++
++    @Override
++    public ByteBuf touch(Object hint) {
++        return a.touch(hint);
++    }
++    // PandaSpigot end
+ }
