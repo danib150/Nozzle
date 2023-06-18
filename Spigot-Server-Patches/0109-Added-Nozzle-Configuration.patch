@@ -1,0 +1,170 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Daniele Bruni <67119358+danib150@users.noreply.github.com>
+Date: Mon, 19 Jun 2023 01:48:11 +0200
+Subject: [PATCH] Added Nozzle Configuration
+
+
+diff --git a/src/main/java/it/dbruni/nozzlemc/NozzleServer.java b/src/main/java/it/dbruni/nozzlemc/NozzleServer.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..bb6d12b5b737fa45d60c9189fcb8843f8b793d3d
+--- /dev/null
++++ b/src/main/java/it/dbruni/nozzlemc/NozzleServer.java
+@@ -0,0 +1,30 @@
++package it.dbruni.nozzlemc;
++
++import ch.jalu.configme.SettingsManager;
++import ch.jalu.configme.SettingsManagerBuilder;
++import it.dbruni.nozzlemc.configuration.NozzleConfiguration;
++
++import java.io.File;
++
++public class NozzleServer {
++    private final File file;
++
++    public NozzleServer(File file) {
++        this.file = file;
++        init();
++    }
++
++    private static SettingsManager settingsManager;
++    private void init() {
++        settingsManager = SettingsManagerBuilder.withYamlFile(file)
++                .useDefaultMigrationService()
++                .configurationData(NozzleConfiguration.class)
++                .create();
++    }
++
++    public static SettingsManager getConfiguration() {
++        return settingsManager;
++    }
++
++
++}
+diff --git a/src/main/java/it/dbruni/nozzlemc/configuration/NozzleConfiguration.java b/src/main/java/it/dbruni/nozzlemc/configuration/NozzleConfiguration.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..ef4ee9e2b95cb34fcb3377bee249cc9f84fcf5c9
+--- /dev/null
++++ b/src/main/java/it/dbruni/nozzlemc/configuration/NozzleConfiguration.java
+@@ -0,0 +1,11 @@
++package it.dbruni.nozzlemc.configuration;
++
++import ch.jalu.configme.Comment;
++import ch.jalu.configme.SettingsHolder;
++import ch.jalu.configme.properties.Property;
++import ch.jalu.configme.properties.PropertyInitializer;
++
++public class NozzleConfiguration implements SettingsHolder {
++    @Comment("Save world chunks every tick specified by bukkit.yml")
++    public static Property<Boolean> SAVE_WORLDS = PropertyInitializer.newProperty("nozzle.worlds.save-world-chunks", true);
++}
+diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+index c4dab42bdf868f73f0c3875e8adfb852b2b02e18..ae1f371ce1a6c48cf159ed7abe910a4757a17972 100644
+--- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+@@ -8,6 +8,9 @@ import java.util.Iterator;
+ import java.util.List;
+ import java.util.Set;
+ import java.util.concurrent.ConcurrentHashMap;
++
++import it.dbruni.nozzlemc.NozzleServer;
++import it.dbruni.nozzlemc.configuration.NozzleConfiguration;
+ import org.apache.logging.log4j.LogManager;
+ import org.apache.logging.log4j.Logger;
+ 
+@@ -261,18 +264,32 @@ public class ChunkProviderServer implements IChunkProvider {
+     }
+ 
+     public void saveChunkNOP(Chunk chunk) {
++        // Nozzle Start
++        if (!NozzleServer.getConfiguration().getProperty(NozzleConfiguration.SAVE_WORLDS)) return;
++        // Nozzle End
++
++        // NMS Start
+         if (this.chunkLoader != null) {
+             try {
+                 this.chunkLoader.b(this.world, chunk);
+             } catch (Exception exception) {
+-                ChunkProviderServer.b.error("Couldn\'t save entities", exception);
++                ChunkProviderServer.b.error("Couldn't save entities", exception);
+             }
+ 
+         }
++        // NMS End
+     }
+ 
+     public void saveChunk(Chunk chunk) {
++
++
++
+         if (this.chunkLoader != null) {
++            if (!NozzleServer.getConfiguration().getProperty(NozzleConfiguration.SAVE_WORLDS)) {
++                chunk.setLastSaved(this.world.getTime());
++                return;
++            }
++
+             try {
+                 chunk.setLastSaved(this.world.getTime());
+                 this.chunkLoader.a(this.world, chunk);
+diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
+index 87529552aa27fc89a542130a27a6b2bfdda44ccd..5cfd6f255007c4d229903a6c79447f1617bd49d9 100644
+--- a/src/main/java/net/minecraft/server/WorldServer.java
++++ b/src/main/java/net/minecraft/server/WorldServer.java
+@@ -13,6 +13,9 @@ import java.util.Random;
+ import java.util.Set;
+ import java.util.TreeSet;
+ import java.util.UUID;
++
++import it.dbruni.nozzlemc.NozzleServer;
++import it.dbruni.nozzlemc.configuration.NozzleConfiguration;
+ import org.apache.logging.log4j.LogManager;
+ import org.apache.logging.log4j.Logger;
+ 
+@@ -981,6 +984,10 @@ public class WorldServer extends World implements IAsyncTaskHandler {
+     }
+ 
+     protected void a() throws ExceptionWorldConflict {
++
++        if (!NozzleServer.getConfiguration().getProperty(NozzleConfiguration.SAVE_WORLDS)) return;
++
++
+         this.checkSession();
+         this.worldData.a(this.getWorldBorder().getSize());
+         this.worldData.d(this.getWorldBorder().getCenterX());
+@@ -1125,6 +1132,8 @@ public class WorldServer extends World implements IAsyncTaskHandler {
+     }
+ 
+     public void saveLevel() {
++        if (!NozzleServer.getConfiguration().getProperty(NozzleConfiguration.SAVE_WORLDS)) return;
++
+         this.dataManager.a();
+     }
+ 
+diff --git a/src/main/java/org/bukkit/craftbukkit/Main.java b/src/main/java/org/bukkit/craftbukkit/Main.java
+index c936219196ea403a9d247ad6c8c0ffee79411da2..c76322629e390b073f6b493d63705b130c08cbb9 100644
+--- a/src/main/java/org/bukkit/craftbukkit/Main.java
++++ b/src/main/java/org/bukkit/craftbukkit/Main.java
+@@ -7,6 +7,8 @@ import java.util.Arrays;
+ import java.util.List;
+ import java.util.logging.Level;
+ import java.util.logging.Logger;
++
++import it.dbruni.nozzlemc.NozzleServer;
+ import joptsimple.OptionParser;
+ import joptsimple.OptionSet;
+ import net.minecraft.server.MinecraftServer;
+@@ -197,11 +199,14 @@ public class Main {
+                     System.out.println( "Please see http://www.spigotmc.org/wiki/changing-permgen-size/ for more details and more in-depth instructions." );
+                 }
+                 // Spigot End
+-                System.out.println("Loading libraries, please wait...");
++                System.out.println("Loading Nozzle, please wait...");
+                 MinecraftServer.main(options);
+             } catch (Throwable t) {
+                 t.printStackTrace();
+             }
++
++            // Nozzle Start
++            new NozzleServer(new File("nozzle.yml"));
+         }
+     }
+ 
