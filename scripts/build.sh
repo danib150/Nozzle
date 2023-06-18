@@ -15,6 +15,6 @@ fi
 ./scripts/applyPatches.sh "$basedir" "$2"
 
 if [ "$2" == "--jar" ]; then
-    ./gradlew build && ./scripts/paperclip.sh "$basedir"
+    ./gradlew build #&& ./scripts/paperclip.sh "$basedir" #TODO: Implement paperclip
 fi
 ) || exit 1

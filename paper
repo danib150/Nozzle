@@ -66,13 +66,13 @@ case "$1" in
         scripts/build.sh "$basedir" "--jar" || exit 1
     ) || failed=1
     ;;
-    "pc" | "paperclip")
-    (
-        set -e
-        cd "$basedir"
-        scripts/paperclip.sh "$basedir" || exit 1
-    ) || failed=1
-    ;;
+    #"pc" | "paperclip") #TODO: Implement paperclip
+    #(
+    #    set -e
+    #    cd "$basedir"
+    #    scripts/paperclip.sh "$basedir" || exit 1
+    #) || failed=1
+    #;;
     "make")
     (
         if [[ "$2" = "bacon" ]] ; then

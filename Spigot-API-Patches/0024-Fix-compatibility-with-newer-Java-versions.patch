@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Peridot <peridot491@protonmail.com>
+Date: Sun, 18 Jun 2023 21:43:41 +0200
+Subject: [PATCH] Fix compatibility with newer Java versions
+
+
+diff --git a/src/main/java/co/aikar/util/LoadingMap.java b/src/main/java/co/aikar/util/LoadingMap.java
+index a9f2919997db476d1aefe66fcc6fcac8e9f98be2..a0ef451c681b6f69c8360278516411c2ceb65e4d 100644
+--- a/src/main/java/co/aikar/util/LoadingMap.java
++++ b/src/main/java/co/aikar/util/LoadingMap.java
+@@ -27,7 +27,7 @@ package co.aikar.util;
+ import com.google.common.base.Function;
+ import org.bukkit.Material;
+ import co.aikar.timings.TimingHistory;
+-import org.w3c.dom.css.Counter;
++//import org.w3c.dom.css.Counter; // MythicProjects - fix compatibility with newer Java versions
+ 
+ import java.lang.reflect.Constructor;
+ import java.util.AbstractMap;
+diff --git a/src/main/java/org/spigotmc/CustomTimingsHandler.java b/src/main/java/org/spigotmc/CustomTimingsHandler.java
+index 7e89b97b60d547c75bde6d54f1512b0277099034..6164aaa0daf0e62f2b9622508eba49db5921f5f0 100644
+--- a/src/main/java/org/spigotmc/CustomTimingsHandler.java
++++ b/src/main/java/org/spigotmc/CustomTimingsHandler.java
+@@ -30,7 +30,7 @@ import co.aikar.timings.NullTimingHandler;
+ import co.aikar.timings.Timing;
+ import co.aikar.timings.Timings;
+ import co.aikar.timings.TimingsManager;
+-import sun.reflect.Reflection;
++//import sun.reflect.Reflection; // MythicProjects - fix compatibility with newer Java versions
+ 
+ import java.lang.reflect.Method;
+ import java.util.logging.Level;
+@@ -52,7 +52,7 @@ public final class CustomTimingsHandler {
+ 
+         Plugin plugin = null;
+         try {
+-             plugin = TimingsManager.getPluginByClassloader(Reflection.getCallerClass(2));
++             //plugin = TimingsManager.getPluginByClassloader(Reflection.getCallerClass(2)); // MythicProjects - fix compatibility with newer Java versions
+         } catch (Exception ignored) {}
+ 
+         new AuthorNagException("Deprecated use of CustomTimingsHandler. Please Switch to Timings.of ASAP").printStackTrace();
