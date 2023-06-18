@@ -1,0 +1,1696 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Daniele Bruni <67119358+danib150@users.noreply.github.com>
+Date: Mon, 19 Jun 2023 00:47:18 +0200
+Subject: [PATCH] Removed PandaSpigot unnecessary classes
+
+
+diff --git a/src/main/java/com/hpfxd/pandaspigot/Metrics.java b/src/main/java/com/hpfxd/pandaspigot/Metrics.java
+deleted file mode 100644
+index 9134394542f49f7c400a4a07b649048899694448..0000000000000000000000000000000000000000
+--- a/src/main/java/com/hpfxd/pandaspigot/Metrics.java
++++ /dev/null
+@@ -1,844 +0,0 @@
+-package com.hpfxd.pandaspigot;
+-
+-import java.io.BufferedReader;
+-import java.io.ByteArrayOutputStream;
+-import java.io.DataOutputStream;
+-import java.io.File;
+-import java.io.IOException;
+-import java.io.InputStreamReader;
+-import java.lang.reflect.Method;
+-import java.net.URL;
+-import java.nio.charset.StandardCharsets;
+-import java.util.Arrays;
+-import java.util.Collection;
+-import java.util.HashSet;
+-import java.util.Map;
+-import java.util.Objects;
+-import java.util.Set;
+-import java.util.UUID;
+-import java.util.concurrent.Callable;
+-import java.util.concurrent.Executors;
+-import java.util.concurrent.ScheduledExecutorService;
+-import java.util.concurrent.TimeUnit;
+-import java.util.function.BiConsumer;
+-import java.util.function.Consumer;
+-import java.util.function.Supplier;
+-import java.util.logging.Level;
+-import java.util.stream.Collectors;
+-import java.util.zip.GZIPOutputStream;
+-import javax.net.ssl.HttpsURLConnection;
+-
+-import net.minecraft.server.MinecraftServer;
+-import org.bukkit.Bukkit;
+-import org.bukkit.configuration.file.YamlConfiguration;
+-import org.bukkit.entity.Player;
+-
+-public class Metrics {
+-    private static final int SERVICE_ID = 15154;
+-    private final MetricsBase metricsBase;
+-
+-    public Metrics() {
+-        // Get the config file
+-        File bStatsFolder = new File((File) MinecraftServer.getServer().options.valueOf("plugins"), "bStats");
+-        File configFile = new File(bStatsFolder, "config.yml");
+-        YamlConfiguration config = YamlConfiguration.loadConfiguration(configFile);
+-        if (!config.isSet("serverUuid")) {
+-            config.addDefault("enabled", true);
+-            config.addDefault("serverUuid", UUID.randomUUID().toString());
+-            config.addDefault("logFailedRequests", false);
+-            config.addDefault("logSentData", false);
+-            config.addDefault("logResponseStatusText", false);
+-            // Inform the server owners about bStats
+-            config
+-                .options()
+-                .header(
+-                    "bStats (https://bStats.org) collects some basic information for plugin authors, like how\n"
+-                        + "many people use their plugin and their total player count. It's recommended to keep bStats\n"
+-                        + "enabled, but if you're not comfortable with this, you can turn this setting off. There is no\n"
+-                        + "performance penalty associated with having metrics enabled, and data sent to bStats is fully\n"
+-                        + "anonymous.")
+-                .copyDefaults(true);
+-            try {
+-                config.save(configFile);
+-            } catch (IOException ignored) {
+-            }
+-        }
+-        // Load the data
+-        boolean enabled = config.getBoolean("enabled", true);
+-        String serverUUID = config.getString("serverUuid");
+-        boolean logErrors = config.getBoolean("logFailedRequests", false);
+-        boolean logSentData = config.getBoolean("logSentData", false);
+-        boolean logResponseStatusText = config.getBoolean("logResponseStatusText", false);
+-        metricsBase =
+-            new MetricsBase(
+-                "bukkit",
+-                serverUUID,
+-                SERVICE_ID,
+-                enabled,
+-                this::appendPlatformData,
+-                this::appendServiceData,
+-                submitDataTask -> MinecraftServer.getServer().processQueue.add(submitDataTask),
+-                () -> MinecraftServer.getServer().isRunning(),
+-                (message, error) -> Bukkit.getLogger().log(Level.WARNING, message, error),
+-                (message) -> Bukkit.getLogger().log(Level.INFO, message),
+-                logErrors,
+-                logSentData,
+-                logResponseStatusText);
+-    }
+-
+-    /**
+-     * Adds a custom chart.
+-     *
+-     * @param chart The chart to add.
+-     */
+-    public void addCustomChart(CustomChart chart) {
+-        metricsBase.addCustomChart(chart);
+-    }
+-
+-    private void appendPlatformData(JsonObjectBuilder builder) {
+-        builder.appendField("playerAmount", getPlayerAmount());
+-        builder.appendField("onlineMode", Bukkit.getOnlineMode() ? 1 : 0);
+-        builder.appendField("bukkitVersion", Bukkit.getVersion());
+-        builder.appendField("bukkitName", Bukkit.getName());
+-        builder.appendField("javaVersion", System.getProperty("java.version"));
+-        builder.appendField("osName", System.getProperty("os.name"));
+-        builder.appendField("osArch", System.getProperty("os.arch"));
+-        builder.appendField("osVersion", System.getProperty("os.version"));
+-        builder.appendField("coreCount", Runtime.getRuntime().availableProcessors());
+-    }
+-
+-    private void appendServiceData(JsonObjectBuilder builder) {
+-        String version = Bukkit.getVersion();
+-        int idx = version.indexOf(" (MC: ");
+-        if (idx != -1) {
+-            version = version.substring(0, idx);
+-        }
+-        builder.appendField("pluginVersion", version);
+-    }
+-
+-    private int getPlayerAmount() {
+-        try {
+-            // Around MC 1.8 the return type was changed from an array to a collection,
+-            // This fixes java.lang.NoSuchMethodError:
+-            // org.bukkit.Bukkit.getOnlinePlayers()Ljava/util/Collection;
+-            Method onlinePlayersMethod = Class.forName("org.bukkit.Server").getMethod("getOnlinePlayers");
+-            return onlinePlayersMethod.getReturnType().equals(Collection.class)
+-                ? ((Collection<?>) onlinePlayersMethod.invoke(Bukkit.getServer())).size()
+-                : ((Player[]) onlinePlayersMethod.invoke(Bukkit.getServer())).length;
+-        } catch (Exception e) {
+-            // Just use the new method if the reflection failed
+-            return Bukkit.getOnlinePlayers().size();
+-        }
+-    }
+-
+-    public static class MetricsBase {
+-
+-        /** The version of the Metrics class. */
+-        public static final String METRICS_VERSION = "3.0.0";
+-
+-        private static final ScheduledExecutorService scheduler =
+-            Executors.newScheduledThreadPool(1, task -> new Thread(task, "bStats-Metrics"));
+-
+-        private static final String REPORT_URL = "https://bStats.org/api/v2/data/%s";
+-
+-        private final String platform;
+-
+-        private final String serverUuid;
+-
+-        private final int serviceId;
+-
+-        private final Consumer<JsonObjectBuilder> appendPlatformDataConsumer;
+-
+-        private final Consumer<JsonObjectBuilder> appendServiceDataConsumer;
+-
+-        private final Consumer<Runnable> submitTaskConsumer;
+-
+-        private final Supplier<Boolean> checkServiceEnabledSupplier;
+-
+-        private final BiConsumer<String, Throwable> errorLogger;
+-
+-        private final Consumer<String> infoLogger;
+-
+-        private final boolean logErrors;
+-
+-        private final boolean logSentData;
+-
+-        private final boolean logResponseStatusText;
+-
+-        private final Set<CustomChart> customCharts = new HashSet<>();
+-
+-        private final boolean enabled;
+-
+-        /**
+-         * Creates a new MetricsBase class instance.
+-         *
+-         * @param platform The platform of the service.
+-         * @param serviceId The id of the service.
+-         * @param serverUuid The server uuid.
+-         * @param enabled Whether or not data sending is enabled.
+-         * @param appendPlatformDataConsumer A consumer that receives a {@code JsonObjectBuilder} and
+-         *     appends all platform-specific data.
+-         * @param appendServiceDataConsumer A consumer that receives a {@code JsonObjectBuilder} and
+-         *     appends all service-specific data.
+-         * @param submitTaskConsumer A consumer that takes a runnable with the submit task. This can be
+-         *     used to delegate the data collection to a another thread to prevent errors caused by
+-         *     concurrency. Can be {@code null}.
+-         * @param checkServiceEnabledSupplier A supplier to check if the service is still enabled.
+-         * @param errorLogger A consumer that accepts log message and an error.
+-         * @param infoLogger A consumer that accepts info log messages.
+-         * @param logErrors Whether or not errors should be logged.
+-         * @param logSentData Whether or not the sent data should be logged.
+-         * @param logResponseStatusText Whether or not the response status text should be logged.
+-         */
+-        public MetricsBase(
+-            String platform,
+-            String serverUuid,
+-            int serviceId,
+-            boolean enabled,
+-            Consumer<JsonObjectBuilder> appendPlatformDataConsumer,
+-            Consumer<JsonObjectBuilder> appendServiceDataConsumer,
+-            Consumer<Runnable> submitTaskConsumer,
+-            Supplier<Boolean> checkServiceEnabledSupplier,
+-            BiConsumer<String, Throwable> errorLogger,
+-            Consumer<String> infoLogger,
+-            boolean logErrors,
+-            boolean logSentData,
+-            boolean logResponseStatusText) {
+-            this.platform = platform;
+-            this.serverUuid = serverUuid;
+-            this.serviceId = serviceId;
+-            this.enabled = enabled;
+-            this.appendPlatformDataConsumer = appendPlatformDataConsumer;
+-            this.appendServiceDataConsumer = appendServiceDataConsumer;
+-            this.submitTaskConsumer = submitTaskConsumer;
+-            this.checkServiceEnabledSupplier = checkServiceEnabledSupplier;
+-            this.errorLogger = errorLogger;
+-            this.infoLogger = infoLogger;
+-            this.logErrors = logErrors;
+-            this.logSentData = logSentData;
+-            this.logResponseStatusText = logResponseStatusText;
+-            checkRelocation();
+-            if (enabled) {
+-                // WARNING: Removing the option to opt-out will get your plugin banned from bStats
+-                startSubmitting();
+-            }
+-        }
+-
+-        public void addCustomChart(CustomChart chart) {
+-            this.customCharts.add(chart);
+-        }
+-
+-        private void startSubmitting() {
+-            final Runnable submitTask =
+-                () -> {
+-                    if (!enabled || !checkServiceEnabledSupplier.get()) {
+-                        // Submitting data or service is disabled
+-                        scheduler.shutdown();
+-                        return;
+-                    }
+-                    if (submitTaskConsumer != null) {
+-                        submitTaskConsumer.accept(this::submitData);
+-                    } else {
+-                        this.submitData();
+-                    }
+-                };
+-            // Many servers tend to restart at a fixed time at xx:00 which causes an uneven distribution
+-            // of requests on the
+-            // bStats backend. To circumvent this problem, we introduce some randomness into the initial
+-            // and second delay.
+-            // WARNING: You must not modify and part of this Metrics class, including the submit delay or
+-            // frequency!
+-            // WARNING: Modifying this code will get your plugin banned on bStats. Just don't do it!
+-            long initialDelay = (long) (1000 * 60 * (3 + Math.random() * 3));
+-            long secondDelay = (long) (1000 * 60 * (Math.random() * 30));
+-            scheduler.schedule(submitTask, initialDelay, TimeUnit.MILLISECONDS);
+-            scheduler.scheduleAtFixedRate(
+-                submitTask, initialDelay + secondDelay, 1000 * 60 * 30, TimeUnit.MILLISECONDS);
+-        }
+-
+-        private void submitData() {
+-            final JsonObjectBuilder baseJsonBuilder = new JsonObjectBuilder();
+-            appendPlatformDataConsumer.accept(baseJsonBuilder);
+-            final JsonObjectBuilder serviceJsonBuilder = new JsonObjectBuilder();
+-            appendServiceDataConsumer.accept(serviceJsonBuilder);
+-            JsonObjectBuilder.JsonObject[] chartData =
+-                customCharts.stream()
+-                    .map(customChart -> customChart.getRequestJsonObject(errorLogger, logErrors))
+-                    .filter(Objects::nonNull)
+-                    .toArray(JsonObjectBuilder.JsonObject[]::new);
+-            serviceJsonBuilder.appendField("id", serviceId);
+-            serviceJsonBuilder.appendField("customCharts", chartData);
+-            baseJsonBuilder.appendField("service", serviceJsonBuilder.build());
+-            baseJsonBuilder.appendField("serverUUID", serverUuid);
+-            baseJsonBuilder.appendField("metricsVersion", METRICS_VERSION);
+-            JsonObjectBuilder.JsonObject data = baseJsonBuilder.build();
+-            scheduler.execute(
+-                () -> {
+-                    try {
+-                        // Send the data
+-                        sendData(data);
+-                    } catch (Exception e) {
+-                        // Something went wrong! :(
+-                        if (logErrors) {
+-                            errorLogger.accept("Could not submit bStats metrics data", e);
+-                        }
+-                    }
+-                });
+-        }
+-
+-        private void sendData(JsonObjectBuilder.JsonObject data) throws Exception {
+-            if (logSentData) {
+-                infoLogger.accept("Sent bStats metrics data: " + data.toString());
+-            }
+-            String url = String.format(REPORT_URL, platform);
+-            HttpsURLConnection connection = (HttpsURLConnection) new URL(url).openConnection();
+-            // Compress the data to save bandwidth
+-            byte[] compressedData = compress(data.toString());
+-            connection.setRequestMethod("POST");
+-            connection.addRequestProperty("Accept", "application/json");
+-            connection.addRequestProperty("Connection", "close");
+-            connection.addRequestProperty("Content-Encoding", "gzip");
+-            connection.addRequestProperty("Content-Length", String.valueOf(compressedData.length));
+-            connection.setRequestProperty("Content-Type", "application/json");
+-            connection.setRequestProperty("User-Agent", "Metrics-Service/1");
+-            connection.setDoOutput(true);
+-            try (DataOutputStream outputStream = new DataOutputStream(connection.getOutputStream())) {
+-                outputStream.write(compressedData);
+-            }
+-            StringBuilder builder = new StringBuilder();
+-            try (BufferedReader bufferedReader =
+-                     new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
+-                String line;
+-                while ((line = bufferedReader.readLine()) != null) {
+-                    builder.append(line);
+-                }
+-            }
+-            if (logResponseStatusText) {
+-                infoLogger.accept("Sent data to bStats and received response: " + builder);
+-            }
+-        }
+-
+-        /** Checks that the class was properly relocated. */
+-        private void checkRelocation() {
+-            // You can use the property to disable the check in your test environment
+-            if (System.getProperty("bstats.relocatecheck") == null
+-                || !System.getProperty("bstats.relocatecheck").equals("false")) {
+-                // Maven's Relocate is clever and changes strings, too. So we have to use this little
+-                // "trick" ... :D
+-                final String defaultPackage =
+-                    new String(new byte[] {'o', 'r', 'g', '.', 'b', 's', 't', 'a', 't', 's'});
+-                final String examplePackage =
+-                    new String(new byte[] {'y', 'o', 'u', 'r', '.', 'p', 'a', 'c', 'k', 'a', 'g', 'e'});
+-                // We want to make sure no one just copy & pastes the example and uses the wrong package
+-                // names
+-                if (MetricsBase.class.getPackage().getName().startsWith(defaultPackage)
+-                    || MetricsBase.class.getPackage().getName().startsWith(examplePackage)) {
+-                    throw new IllegalStateException("bStats Metrics class has not been relocated correctly!");
+-                }
+-            }
+-        }
+-
+-        /**
+-         * Gzips the given string.
+-         *
+-         * @param str The string to gzip.
+-         * @return The gzipped string.
+-         */
+-        private static byte[] compress(final String str) throws IOException {
+-            if (str == null) {
+-                return null;
+-            }
+-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+-            try (GZIPOutputStream gzip = new GZIPOutputStream(outputStream)) {
+-                gzip.write(str.getBytes(StandardCharsets.UTF_8));
+-            }
+-            return outputStream.toByteArray();
+-        }
+-    }
+-
+-    public static class DrilldownPie extends CustomChart {
+-
+-        private final Callable<Map<String, Map<String, Integer>>> callable;
+-
+-        /**
+-         * Class constructor.
+-         *
+-         * @param chartId The id of the chart.
+-         * @param callable The callable which is used to request the chart data.
+-         */
+-        public DrilldownPie(String chartId, Callable<Map<String, Map<String, Integer>>> callable) {
+-            super(chartId);
+-            this.callable = callable;
+-        }
+-
+-        @Override
+-        public JsonObjectBuilder.JsonObject getChartData() throws Exception {
+-            JsonObjectBuilder valuesBuilder = new JsonObjectBuilder();
+-            Map<String, Map<String, Integer>> map = callable.call();
+-            if (map == null || map.isEmpty()) {
+-                // Null = skip the chart
+-                return null;
+-            }
+-            boolean reallyAllSkipped = true;
+-            for (Map.Entry<String, Map<String, Integer>> entryValues : map.entrySet()) {
+-                JsonObjectBuilder valueBuilder = new JsonObjectBuilder();
+-                boolean allSkipped = true;
+-                for (Map.Entry<String, Integer> valueEntry : map.get(entryValues.getKey()).entrySet()) {
+-                    valueBuilder.appendField(valueEntry.getKey(), valueEntry.getValue());
+-                    allSkipped = false;
+-                }
+-                if (!allSkipped) {
+-                    reallyAllSkipped = false;
+-                    valuesBuilder.appendField(entryValues.getKey(), valueBuilder.build());
+-                }
+-            }
+-            if (reallyAllSkipped) {
+-                // Null = skip the chart
+-                return null;
+-            }
+-            return new JsonObjectBuilder().appendField("values", valuesBuilder.build()).build();
+-        }
+-    }
+-
+-    public static class AdvancedPie extends CustomChart {
+-
+-        private final Callable<Map<String, Integer>> callable;
+-
+-        /**
+-         * Class constructor.
+-         *
+-         * @param chartId The id of the chart.
+-         * @param callable The callable which is used to request the chart data.
+-         */
+-        public AdvancedPie(String chartId, Callable<Map<String, Integer>> callable) {
+-            super(chartId);
+-            this.callable = callable;
+-        }
+-
+-        @Override
+-        protected JsonObjectBuilder.JsonObject getChartData() throws Exception {
+-            JsonObjectBuilder valuesBuilder = new JsonObjectBuilder();
+-            Map<String, Integer> map = callable.call();
+-            if (map == null || map.isEmpty()) {
+-                // Null = skip the chart
+-                return null;
+-            }
+-            boolean allSkipped = true;
+-            for (Map.Entry<String, Integer> entry : map.entrySet()) {
+-                if (entry.getValue() == 0) {
+-                    // Skip this invalid
+-                    continue;
+-                }
+-                allSkipped = false;
+-                valuesBuilder.appendField(entry.getKey(), entry.getValue());
+-            }
+-            if (allSkipped) {
+-                // Null = skip the chart
+-                return null;
+-            }
+-            return new JsonObjectBuilder().appendField("values", valuesBuilder.build()).build();
+-        }
+-    }
+-
+-    public static class MultiLineChart extends CustomChart {
+-
+-        private final Callable<Map<String, Integer>> callable;
+-
+-        /**
+-         * Class constructor.
+-         *
+-         * @param chartId The id of the chart.
+-         * @param callable The callable which is used to request the chart data.
+-         */
+-        public MultiLineChart(String chartId, Callable<Map<String, Integer>> callable) {
+-            super(chartId);
+-            this.callable = callable;
+-        }
+-
+-        @Override
+-        protected JsonObjectBuilder.JsonObject getChartData() throws Exception {
+-            JsonObjectBuilder valuesBuilder = new JsonObjectBuilder();
+-            Map<String, Integer> map = callable.call();
+-            if (map == null || map.isEmpty()) {
+-                // Null = skip the chart
+-                return null;
+-            }
+-            boolean allSkipped = true;
+-            for (Map.Entry<String, Integer> entry : map.entrySet()) {
+-                if (entry.getValue() == 0) {
+-                    // Skip this invalid
+-                    continue;
+-                }
+-                allSkipped = false;
+-                valuesBuilder.appendField(entry.getKey(), entry.getValue());
+-            }
+-            if (allSkipped) {
+-                // Null = skip the chart
+-                return null;
+-            }
+-            return new JsonObjectBuilder().appendField("values", valuesBuilder.build()).build();
+-        }
+-    }
+-
+-    public static class SimpleBarChart extends CustomChart {
+-
+-        private final Callable<Map<String, Integer>> callable;
+-
+-        /**
+-         * Class constructor.
+-         *
+-         * @param chartId The id of the chart.
+-         * @param callable The callable which is used to request the chart data.
+-         */
+-        public SimpleBarChart(String chartId, Callable<Map<String, Integer>> callable) {
+-            super(chartId);
+-            this.callable = callable;
+-        }
+-
+-        @Override
+-        protected JsonObjectBuilder.JsonObject getChartData() throws Exception {
+-            JsonObjectBuilder valuesBuilder = new JsonObjectBuilder();
+-            Map<String, Integer> map = callable.call();
+-            if (map == null || map.isEmpty()) {
+-                // Null = skip the chart
+-                return null;
+-            }
+-            for (Map.Entry<String, Integer> entry : map.entrySet()) {
+-                valuesBuilder.appendField(entry.getKey(), new int[] {entry.getValue()});
+-            }
+-            return new JsonObjectBuilder().appendField("values", valuesBuilder.build()).build();
+-        }
+-    }
+-
+-    public abstract static class CustomChart {
+-
+-        private final String chartId;
+-
+-        protected CustomChart(String chartId) {
+-            if (chartId == null) {
+-                throw new IllegalArgumentException("chartId must not be null");
+-            }
+-            this.chartId = chartId;
+-        }
+-
+-        public JsonObjectBuilder.JsonObject getRequestJsonObject(
+-            BiConsumer<String, Throwable> errorLogger, boolean logErrors) {
+-            JsonObjectBuilder builder = new JsonObjectBuilder();
+-            builder.appendField("chartId", chartId);
+-            try {
+-                JsonObjectBuilder.JsonObject data = getChartData();
+-                if (data == null) {
+-                    // If the data is null we don't send the chart.
+-                    return null;
+-                }
+-                builder.appendField("data", data);
+-            } catch (Throwable t) {
+-                if (logErrors) {
+-                    errorLogger.accept("Failed to get data for custom chart with id " + chartId, t);
+-                }
+-                return null;
+-            }
+-            return builder.build();
+-        }
+-
+-        protected abstract JsonObjectBuilder.JsonObject getChartData() throws Exception;
+-    }
+-
+-    public static class SimplePie extends CustomChart {
+-
+-        private final Callable<String> callable;
+-
+-        /**
+-         * Class constructor.
+-         *
+-         * @param chartId The id of the chart.
+-         * @param callable The callable which is used to request the chart data.
+-         */
+-        public SimplePie(String chartId, Callable<String> callable) {
+-            super(chartId);
+-            this.callable = callable;
+-        }
+-
+-        @Override
+-        protected JsonObjectBuilder.JsonObject getChartData() throws Exception {
+-            String value = callable.call();
+-            if (value == null || value.isEmpty()) {
+-                // Null = skip the chart
+-                return null;
+-            }
+-            return new JsonObjectBuilder().appendField("value", value).build();
+-        }
+-    }
+-
+-    public static class AdvancedBarChart extends CustomChart {
+-
+-        private final Callable<Map<String, int[]>> callable;
+-
+-        /**
+-         * Class constructor.
+-         *
+-         * @param chartId The id of the chart.
+-         * @param callable The callable which is used to request the chart data.
+-         */
+-        public AdvancedBarChart(String chartId, Callable<Map<String, int[]>> callable) {
+-            super(chartId);
+-            this.callable = callable;
+-        }
+-
+-        @Override
+-        protected JsonObjectBuilder.JsonObject getChartData() throws Exception {
+-            JsonObjectBuilder valuesBuilder = new JsonObjectBuilder();
+-            Map<String, int[]> map = callable.call();
+-            if (map == null || map.isEmpty()) {
+-                // Null = skip the chart
+-                return null;
+-            }
+-            boolean allSkipped = true;
+-            for (Map.Entry<String, int[]> entry : map.entrySet()) {
+-                if (entry.getValue().length == 0) {
+-                    // Skip this invalid
+-                    continue;
+-                }
+-                allSkipped = false;
+-                valuesBuilder.appendField(entry.getKey(), entry.getValue());
+-            }
+-            if (allSkipped) {
+-                // Null = skip the chart
+-                return null;
+-            }
+-            return new JsonObjectBuilder().appendField("values", valuesBuilder.build()).build();
+-        }
+-    }
+-
+-    public static class SingleLineChart extends CustomChart {
+-
+-        private final Callable<Integer> callable;
+-
+-        /**
+-         * Class constructor.
+-         *
+-         * @param chartId The id of the chart.
+-         * @param callable The callable which is used to request the chart data.
+-         */
+-        public SingleLineChart(String chartId, Callable<Integer> callable) {
+-            super(chartId);
+-            this.callable = callable;
+-        }
+-
+-        @Override
+-        protected JsonObjectBuilder.JsonObject getChartData() throws Exception {
+-            int value = callable.call();
+-            if (value == 0) {
+-                // Null = skip the chart
+-                return null;
+-            }
+-            return new JsonObjectBuilder().appendField("value", value).build();
+-        }
+-    }
+-
+-    /**
+-     * An extremely simple JSON builder.
+-     *
+-     * <p>While this class is neither feature-rich nor the most performant one, it's sufficient enough
+-     * for its use-case.
+-     */
+-    public static class JsonObjectBuilder {
+-
+-        private StringBuilder builder = new StringBuilder();
+-
+-        private boolean hasAtLeastOneField = false;
+-
+-        public JsonObjectBuilder() {
+-            builder.append("{");
+-        }
+-
+-        /**
+-         * Appends a null field to the JSON.
+-         *
+-         * @param key The key of the field.
+-         * @return A reference to this object.
+-         */
+-        public JsonObjectBuilder appendNull(String key) {
+-            appendFieldUnescaped(key, "null");
+-            return this;
+-        }
+-
+-        /**
+-         * Appends a string field to the JSON.
+-         *
+-         * @param key The key of the field.
+-         * @param value The value of the field.
+-         * @return A reference to this object.
+-         */
+-        public JsonObjectBuilder appendField(String key, String value) {
+-            if (value == null) {
+-                throw new IllegalArgumentException("JSON value must not be null");
+-            }
+-            appendFieldUnescaped(key, "\"" + escape(value) + "\"");
+-            return this;
+-        }
+-
+-        /**
+-         * Appends an integer field to the JSON.
+-         *
+-         * @param key The key of the field.
+-         * @param value The value of the field.
+-         * @return A reference to this object.
+-         */
+-        public JsonObjectBuilder appendField(String key, int value) {
+-            appendFieldUnescaped(key, String.valueOf(value));
+-            return this;
+-        }
+-
+-        /**
+-         * Appends an object to the JSON.
+-         *
+-         * @param key The key of the field.
+-         * @param object The object.
+-         * @return A reference to this object.
+-         */
+-        public JsonObjectBuilder appendField(String key, JsonObject object) {
+-            if (object == null) {
+-                throw new IllegalArgumentException("JSON object must not be null");
+-            }
+-            appendFieldUnescaped(key, object.toString());
+-            return this;
+-        }
+-
+-        /**
+-         * Appends a string array to the JSON.
+-         *
+-         * @param key The key of the field.
+-         * @param values The string array.
+-         * @return A reference to this object.
+-         */
+-        public JsonObjectBuilder appendField(String key, String[] values) {
+-            if (values == null) {
+-                throw new IllegalArgumentException("JSON values must not be null");
+-            }
+-            String escapedValues =
+-                Arrays.stream(values)
+-                    .map(value -> "\"" + escape(value) + "\"")
+-                    .collect(Collectors.joining(","));
+-            appendFieldUnescaped(key, "[" + escapedValues + "]");
+-            return this;
+-        }
+-
+-        /**
+-         * Appends an integer array to the JSON.
+-         *
+-         * @param key The key of the field.
+-         * @param values The integer array.
+-         * @return A reference to this object.
+-         */
+-        public JsonObjectBuilder appendField(String key, int[] values) {
+-            if (values == null) {
+-                throw new IllegalArgumentException("JSON values must not be null");
+-            }
+-            String escapedValues =
+-                Arrays.stream(values).mapToObj(String::valueOf).collect(Collectors.joining(","));
+-            appendFieldUnescaped(key, "[" + escapedValues + "]");
+-            return this;
+-        }
+-
+-        /**
+-         * Appends an object array to the JSON.
+-         *
+-         * @param key The key of the field.
+-         * @param values The integer array.
+-         * @return A reference to this object.
+-         */
+-        public JsonObjectBuilder appendField(String key, JsonObject[] values) {
+-            if (values == null) {
+-                throw new IllegalArgumentException("JSON values must not be null");
+-            }
+-            String escapedValues =
+-                Arrays.stream(values).map(JsonObject::toString).collect(Collectors.joining(","));
+-            appendFieldUnescaped(key, "[" + escapedValues + "]");
+-            return this;
+-        }
+-
+-        /**
+-         * Appends a field to the object.
+-         *
+-         * @param key The key of the field.
+-         * @param escapedValue The escaped value of the field.
+-         */
+-        private void appendFieldUnescaped(String key, String escapedValue) {
+-            if (builder == null) {
+-                throw new IllegalStateException("JSON has already been built");
+-            }
+-            if (key == null) {
+-                throw new IllegalArgumentException("JSON key must not be null");
+-            }
+-            if (hasAtLeastOneField) {
+-                builder.append(",");
+-            }
+-            builder.append("\"").append(escape(key)).append("\":").append(escapedValue);
+-            hasAtLeastOneField = true;
+-        }
+-
+-        /**
+-         * Builds the JSON string and invalidates this builder.
+-         *
+-         * @return The built JSON string.
+-         */
+-        public JsonObject build() {
+-            if (builder == null) {
+-                throw new IllegalStateException("JSON has already been built");
+-            }
+-            JsonObject object = new JsonObject(builder.append("}").toString());
+-            builder = null;
+-            return object;
+-        }
+-
+-        /**
+-         * Escapes the given string like stated in https://www.ietf.org/rfc/rfc4627.txt.
+-         *
+-         * <p>This method escapes only the necessary characters '"', '\'. and '\u0000' - '\u001F'.
+-         * Compact escapes are not used (e.g., '\n' is escaped as "\u000a" and not as "\n").
+-         *
+-         * @param value The value to escape.
+-         * @return The escaped value.
+-         */
+-        private static String escape(String value) {
+-            final StringBuilder builder = new StringBuilder();
+-            for (int i = 0; i < value.length(); i++) {
+-                char c = value.charAt(i);
+-                if (c == '"') {
+-                    builder.append("\\\"");
+-                } else if (c == '\\') {
+-                    builder.append("\\\\");
+-                } else if (c <= '\u000F') {
+-                    builder.append("\\u000").append(Integer.toHexString(c));
+-                } else if (c <= '\u001F') {
+-                    builder.append("\\u00").append(Integer.toHexString(c));
+-                } else {
+-                    builder.append(c);
+-                }
+-            }
+-            return builder.toString();
+-        }
+-
+-        /**
+-         * A super simple representation of a JSON object.
+-         *
+-         * <p>This class only exists to make methods of the {@link JsonObjectBuilder} type-safe and not
+-         * allow a raw string inputs for methods like {@link JsonObjectBuilder#appendField(String,
+-         * JsonObject)}.
+-         */
+-        public static class JsonObject {
+-
+-            private final String value;
+-
+-            private JsonObject(String value) {
+-                this.value = value;
+-            }
+-
+-            @Override
+-            public String toString() {
+-                return value;
+-            }
+-        }
+-    }
+-}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/config/PacketLimiterConfig.java b/src/main/java/com/hpfxd/pandaspigot/config/PacketLimiterConfig.java
+deleted file mode 100644
+index 24d213655f038129e25bd75ce876ba68ed43105c..0000000000000000000000000000000000000000
+--- a/src/main/java/com/hpfxd/pandaspigot/config/PacketLimiterConfig.java
++++ /dev/null
+@@ -1,132 +0,0 @@
+-package com.hpfxd.pandaspigot.config;
+-
+-import net.minecraft.server.Packet;
+-import org.bukkit.Bukkit;
+-import org.spongepowered.configurate.ConfigurationNode;
+-import org.spongepowered.configurate.serialize.SerializationException;
+-import org.spongepowered.configurate.serialize.TypeSerializer;
+-
+-import java.lang.reflect.Type;
+-import java.util.HashMap;
+-import java.util.Map;
+-
+-public class PacketLimiterConfig {
+-    private final String kickMessage;
+-    private final PacketLimit allPacketsLimit;
+-    private final Map<Class<? extends Packet<?>>, PacketLimit> packetSpecificLimits;
+-
+-    public PacketLimiterConfig(String kickMessage, PacketLimit allPacketsLimit, Map<Class<? extends Packet<?>>, PacketLimit> packetSpecificLimits) {
+-        this.kickMessage = kickMessage;
+-        this.allPacketsLimit = allPacketsLimit;
+-        this.packetSpecificLimits = packetSpecificLimits;
+-    }
+-
+-    public static final class PacketLimit {
+-        public final double packetLimitInterval;
+-        public final double maxPacketRate;
+-        public final ViolateAction violateAction;
+-
+-        public PacketLimit(final double packetLimitInterval, final double maxPacketRate, final ViolateAction violateAction) {
+-            this.packetLimitInterval = packetLimitInterval;
+-            this.maxPacketRate = maxPacketRate;
+-            this.violateAction = violateAction;
+-        }
+-
+-        public enum ViolateAction {
+-            KICK, DROP;
+-        }
+-    }
+-
+-    static PacketLimiterConfig createDefault() {
+-        return new PacketLimiterConfig("&cSent too many packets.", new PacketLimit(7, 500, PacketLimit.ViolateAction.KICK), new HashMap<>());
+-    }
+-
+-    public String getKickMessage() {
+-        return this.kickMessage;
+-    }
+-
+-    public PacketLimit getAllPacketsLimit() {
+-        return this.allPacketsLimit;
+-    }
+-
+-    public Map<Class<? extends Packet<?>>, PacketLimit> getPacketSpecificLimits() {
+-        return this.packetSpecificLimits;
+-    }
+-
+-    public static class Serializer implements TypeSerializer<PacketLimiterConfig> {
+-        @Override
+-        public PacketLimiterConfig deserialize(Type type, ConfigurationNode node) throws SerializationException {
+-            String kickMessage = node.node("kickMessage").getString("&cSent too many packets.");
+-            ConfigurationNode limits = node.node("limits");
+-
+-            PacketLimit allPacketsLimit = null;
+-            Map<Class<? extends Packet<?>>, PacketLimit> packetSpecificLimits = new HashMap<>();
+-
+-            for (Map.Entry<Object, ? extends ConfigurationNode> entry : limits.childrenMap().entrySet()) {
+-                String key = String.valueOf(entry.getKey());
+-                ConfigurationNode limitNode = entry.getValue();
+-                if (key.equals("all")) {
+-                    PacketLimit packetLimit = new PacketLimit(
+-                        limitNode.node("interval").getDouble(),
+-                        limitNode.node("maxPacketRate").getDouble(),
+-                        PacketLimit.ViolateAction.KICK
+-                    );
+-
+-                    if (packetLimit.packetLimitInterval > 0.0 && packetLimit.maxPacketRate > 0.0) {
+-                        allPacketsLimit = packetLimit;
+-                    }
+-                } else {
+-                    Class<?> clazz;
+-                    try {
+-                        clazz = Class.forName("net.minecraft.server." + key);
+-                    } catch (ClassNotFoundException e) {
+-                        Bukkit.getLogger().warning("Packet '" + key + "' does not exist, cannot limit it! Please update pandaspigot.yml");
+-                        continue;
+-                    }
+-
+-                    if (!Packet.class.isAssignableFrom(clazz)) {
+-                        Bukkit.getLogger().warning("Class '" + key + "' is not a packet, cannot limit it! Please update pandaspigot.yml");
+-                        continue;
+-                    }
+-
+-                    PacketLimit packetLimit = new PacketLimit(
+-                        limitNode.node("interval").getDouble(),
+-                        limitNode.node("maxPacketRate").getDouble(),
+-                        limitNode.node("action").get(PacketLimit.ViolateAction.class)
+-                    );
+-
+-                    if (packetLimit.packetLimitInterval > 0.0 && packetLimit.maxPacketRate > 0.0) {
+-                        //noinspection unchecked
+-                        packetSpecificLimits.put((Class<? extends Packet<?>>) clazz, packetLimit);
+-                    }
+-                }
+-            }
+-
+-            return new PacketLimiterConfig(kickMessage, allPacketsLimit, packetSpecificLimits);
+-        }
+-
+-        @Override
+-        public void serialize(Type type, PacketLimiterConfig config, ConfigurationNode target) throws SerializationException {
+-            if (config == null) {
+-                target.raw(null);
+-                return;
+-            }
+-
+-            target.node("kickMessage").set(config.kickMessage);
+-            ConfigurationNode limitsNode = target.node("limits");
+-            if (config.allPacketsLimit != null) {
+-                limitsNode.node("all", "interval").set(config.allPacketsLimit.packetLimitInterval);
+-                limitsNode.node("all", "maxPacketRate").set(config.allPacketsLimit.maxPacketRate);
+-            }
+-
+-            for (Map.Entry<Class<? extends Packet<?>>, PacketLimit> entry : config.packetSpecificLimits.entrySet()) {
+-                ConfigurationNode node = limitsNode.node(entry.getKey().getSimpleName());
+-                PacketLimit limit = entry.getValue();
+-
+-                node.node("interval", limit.packetLimitInterval);
+-                node.node("maxPacketRate", limit.maxPacketRate);
+-                node.node("action").set(limit.violateAction);
+-            }
+-        }
+-    }
+-}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/config/PandaSpigotConfig.java b/src/main/java/com/hpfxd/pandaspigot/config/PandaSpigotConfig.java
+deleted file mode 100644
+index ae3cdaca275b1a50c5c37c3dd0021c4bd579d373..0000000000000000000000000000000000000000
+--- a/src/main/java/com/hpfxd/pandaspigot/config/PandaSpigotConfig.java
++++ /dev/null
+@@ -1,128 +0,0 @@
+-package com.hpfxd.pandaspigot.config;
+-
+-import com.google.common.base.Throwables;
+-import com.hpfxd.configurate.eoyaml.EOYamlConfigurationLoader;
+-import net.minecraft.server.World;
+-import org.bukkit.Bukkit;
+-import org.spigotmc.SpigotConfig;
+-import org.spongepowered.configurate.CommentedConfigurationNode;
+-import org.spongepowered.configurate.ConfigurationNode;
+-import org.spongepowered.configurate.objectmapping.ConfigSerializable;
+-import org.spongepowered.configurate.objectmapping.ObjectMapper;
+-import org.spongepowered.configurate.objectmapping.meta.Comment;
+-import org.spongepowered.configurate.util.MapFactories;
+-import org.spongepowered.configurate.util.NamingSchemes;
+-
+-import java.io.File;
+-import java.util.HashMap;
+-import java.util.Map;
+-
+-@ConfigSerializable
+-@SuppressWarnings({"FieldCanBeLocal", "FieldMayBeFinal"})
+-public class PandaSpigotConfig {
+-    private static PandaSpigotConfig config;
+-    private static PandaSpigotWorldConfig defaultWorldConfig;
+-    private static final Map<String, PandaSpigotWorldConfig> worldConfigs = new HashMap<>();
+-    
+-    /**
+-     * Initialize the configuration, and load it from a file.
+-     * <p>
+-     * This is called once on server startup, and every reload.
+-     *
+-     * @param file The configuration file.
+-     */
+-    public static void init(File file) {
+-        EOYamlConfigurationLoader loader = EOYamlConfigurationLoader.builder()
+-                .file(file)
+-                .defaultOptions(o -> o
+-                        .header("This is the configuration file for PandaSpigot.\n" +
+-                                "Use caution when modifying settings, as some may impact gameplay in non-obvious ways.")
+-                        .mapFactory(MapFactories.insertionOrdered())
+-                        .serializers(build -> build.register(PacketLimiterConfig.class, new PacketLimiterConfig.Serializer())
+-                                .registerAnnotatedObjects(ObjectMapper.factoryBuilder()
+-                                .defaultNamingScheme(NamingSchemes.CAMEL_CASE)
+-                                .build())))
+-                .build();
+-        
+-        try {
+-            CommentedConfigurationNode root = loader.load();
+-            config = root.get(PandaSpigotConfig.class);
+-            
+-            // worlds
+-            CommentedConfigurationNode worldsNode = root.node("worlds")
+-                    .comment("The worlds section is for settings which can be configured per-world.\n" +
+-                            "\n" +
+-                            "Any settings in the \"default\" world will provide default values for\n" +
+-                            "other worlds which don't explicitly specify settings.\n" +
+-                            "\n" +
+-                            "To specify settings for a specific world, just add a new section with the world's name.");
+-            ConfigurationNode defaultWorldNode = worldsNode.node("default");
+-            defaultWorldConfig = defaultWorldNode.get(PandaSpigotWorldConfig.class);
+-            defaultWorldNode.set(defaultWorldConfig); // populate default in config
+-            
+-            root.set(config); // update backing node
+-            loader.save(root);
+-            
+-            // call after save
+-            initWorlds(worldsNode);
+-        } catch (Exception e) {
+-            throw Throwables.propagate(e);
+-        }
+-    }
+-    
+-    private static void initWorlds(ConfigurationNode node) throws Exception {
+-        worldConfigs.clear();
+-        for (Map.Entry<Object, ? extends ConfigurationNode> entry : node.childrenMap().entrySet()) {
+-            Object worldName = entry.getKey();
+-            if (worldName.equals("default")) continue; // skip "default"
+-            ConfigurationNode worldNode = entry.getValue();
+-            
+-            PandaSpigotWorldConfig worldConfig = worldNode.get(PandaSpigotWorldConfig.class);
+-            
+-            worldConfigs.put(worldName.toString(), worldConfig);
+-        }
+-    }
+-    
+-    public static PandaSpigotWorldConfig getWorldConfig(String worldName) {
+-        return worldConfigs.getOrDefault(worldName, defaultWorldConfig);
+-    }
+-    
+-    public static PandaSpigotWorldConfig getWorldConfig(World world) {
+-        return getWorldConfig(world.worldData.getName());
+-    }
+-    
+-    public static PandaSpigotConfig get() {
+-        return config;
+-    }
+-    
+-    //------------------------------------------------------------------------
+-    @Comment("On servers with plugins that constantly churn through scoreboards, there is a risk of\n" +
+-        "degraded GC performance due to the number of scoreboards held on by weak references.\n" +
+-        "Most plugins don't even need the (vanilla) functionality that requires all plugin\n" +
+-        "scoreboards to be tracked by the server. Instead, only track scoreboards when an\n" +
+-        "objective is added with a non-dummy criteria.")
+-    public boolean trackPluginScoreboards = false;
+-
+-    @Comment("Instructs the server how to handle player UUIDs and data when behind a proxy. Set to\n" +
+-        "match your proxy's online-mode setting.")
+-    public boolean proxyOnlineMode = true;
+-
+-    public boolean isProxyOnlineMode() {
+-        return Bukkit.getOnlineMode() || (SpigotConfig.bungee && this.proxyOnlineMode);
+-    }
+-
+-    public int maxBookPageSize = 2560;
+-
+-    public double maxBookTotalSizeMultiplier = 0.98d;
+-
+-    @Comment("Limits incoming packets from players. See Paper's documentation for more info:\n" +
+-        "https://docs.papermc.io/paper/reference/paper-global-configuration#packet-limiter\n" +
+-        "(note that \"max-packet-rate\" is renamed to \"maxPacketRate\")")
+-    public PacketLimiterConfig packetLimiter = PacketLimiterConfig.createDefault();
+-
+-    public boolean resolveSelectorsInBooks = true;
+-
+-    @Comment("Whether player IP addresses should be logged by the server. This does not impact\n" +
+-        "the ability of plugins to log the IP addresses of players.")
+-    public boolean logPlayerIpAddresses = true;
+-}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/config/PandaSpigotWorldConfig.java b/src/main/java/com/hpfxd/pandaspigot/config/PandaSpigotWorldConfig.java
+deleted file mode 100644
+index 360ed37b95fce68941c234615b465090b8ea7308..0000000000000000000000000000000000000000
+--- a/src/main/java/com/hpfxd/pandaspigot/config/PandaSpigotWorldConfig.java
++++ /dev/null
+@@ -1,65 +0,0 @@
+-package com.hpfxd.pandaspigot.config;
+-
+-import org.spongepowered.configurate.objectmapping.ConfigSerializable;
+-import org.spongepowered.configurate.objectmapping.meta.Comment;
+-
+-@ConfigSerializable
+-@SuppressWarnings({"FieldCanBeLocal", "FieldMayBeFinal"})
+-public class PandaSpigotWorldConfig {
+-    @Comment("How many ticks in between sending time updates to players?\n" +
+-            "\n" +
+-            "The vanilla option is 20 (every second), but PandaSpigot sets the default\n" +
+-            "to 100 (every 5 seconds). You would probably be fine setting this even\n" +
+-            "higher, unless you're constantly changing the time, or the server is lagging.")
+-    public int timeUpdateFrequency = 100;
+-    
+-    @Comment("This option makes it so that when players are teleported to a location\n" +
+-            "with the same rotation they currently have, the server will send a special\n" +
+-            "packet indicating that the client should not update it's rotation at all.\n" +
+-            "\n" +
+-            "For example, normally constantly teleporting a player to their own location\n" +
+-            "will make moving their head very difficult, especially for players with higher latency.\n" +
+-            "With this option enabled, they will be able to move their head just like normal.")
+-    public boolean smoothTeleportation = false;
+-    
+-    @Comment("When enabled, this option disables reading and writing player data such as:\n" +
+-            "- Position\n" +
+-            "- Inventory\n" +
+-            "- Enderchest")
+-    public boolean disablePlayerData = false;
+-    
+-    @Comment("When enabled, this option will disable saving world chunks.")
+-    public boolean disableChunkSaving = false;
+-    
+-    @Comment("When enabled, entity AI will be disabled.\n" +
+-            "\n" +
+-            "This has the same effect as Spigot's \"nerf-spawner-mobs\" option, but applies to all entities.")
+-    public boolean disableEntityAi = false;
+-    
+-    @Comment("This option controls whether or not to add a bit of randomness to an arrow's trajectory.\n" +
+-            "By default, this is true (vanilla behaviour)")
+-    public boolean randomArrowTrajectory = true;
+-    
+-    @Comment("These options control velocity players receive when damaged.")
+-    public KnockbackConfig knockback;
+-    
+-    @ConfigSerializable
+-    public static class KnockbackConfig {
+-        public double friction = 2.0;
+-        public double horizontal = 0.4;
+-        public double vertical = 0.4;
+-        public double verticalLimit = 0.4000000059604645;
+-        public double extraHorizontal = 0.5;
+-        public double extraVertical = 0.1;
+-    }
+-
+-    public boolean optimizeTntMovement = false; // May not fully emulate vanilla behavior
+-
+-    public boolean optimizeLiquidExplosions = true; // This seems like a pretty sane default
+-
+-    public boolean optimizeArmorStandMovement = false; // Doesn't fully emulate vanilla behavior, see TacoSpigot issue #1
+-	
+-    @Comment("This option controls whether or not there is a chance for arrow crits to deal extra damage.\n" +
+-            "By default, this is true (vanilla behaviour)")
+-    public boolean randomArrowDamage = true;
+-}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/console/PandaConsole.java b/src/main/java/com/hpfxd/pandaspigot/console/PandaConsole.java
+deleted file mode 100644
+index 25a515b681bbbb70946f2ec73647a6f184f81b3c..0000000000000000000000000000000000000000
+--- a/src/main/java/com/hpfxd/pandaspigot/console/PandaConsole.java
++++ /dev/null
+@@ -1,39 +0,0 @@
+-package com.hpfxd.pandaspigot.console;
+-
+-import net.minecraft.server.DedicatedServer;
+-import net.minecrell.terminalconsole.SimpleTerminalConsole;
+-import org.jline.reader.LineReader;
+-import org.jline.reader.LineReaderBuilder;
+-
+-import java.nio.file.Paths;
+-
+-public class PandaConsole extends SimpleTerminalConsole {
+-    private final DedicatedServer server;
+-    
+-    public PandaConsole(DedicatedServer server) {
+-        this.server = server;
+-    }
+-    
+-    @Override
+-    protected boolean isRunning() {
+-        return !this.server.isStopped() && this.server.isRunning();
+-    }
+-    
+-    @Override
+-    protected void runCommand(String command) {
+-        this.server.issueCommand(command, this.server);
+-    }
+-    
+-    @Override
+-    protected void shutdown() {
+-        this.server.safeShutdown();
+-    }
+-    
+-    @Override
+-    protected LineReader buildReader(LineReaderBuilder builder) {
+-        return super.buildReader(builder
+-            .appName("PandaSpigot")
+-            .variable(LineReader.HISTORY_FILE, Paths.get(".console_history"))
+-            .completer(new PandaConsoleCompleter(this.server)));
+-    }
+-}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/console/PandaConsoleCommandSender.java b/src/main/java/com/hpfxd/pandaspigot/console/PandaConsoleCommandSender.java
+deleted file mode 100644
+index 88a52389fef0d36925085296faccebfd851706b2..0000000000000000000000000000000000000000
+--- a/src/main/java/com/hpfxd/pandaspigot/console/PandaConsoleCommandSender.java
++++ /dev/null
+@@ -1,15 +0,0 @@
+-package com.hpfxd.pandaspigot.console;
+-
+-import org.apache.logging.log4j.LogManager;
+-import org.apache.logging.log4j.Logger;
+-import org.bukkit.craftbukkit.command.CraftConsoleCommandSender;
+-
+-public class PandaConsoleCommandSender extends CraftConsoleCommandSender {
+-    private static final Logger LOGGER = LogManager.getRootLogger();
+-    
+-    @Override
+-    public void sendRawMessage(String message) {
+-        // TerminalConsoleAppender supports color codes directly in log messages
+-        LOGGER.info(message);
+-    }
+-}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/console/PandaConsoleCompleter.java b/src/main/java/com/hpfxd/pandaspigot/console/PandaConsoleCompleter.java
+deleted file mode 100644
+index ad68ab6618e3d13b1df59398471b95c955efd026..0000000000000000000000000000000000000000
+--- a/src/main/java/com/hpfxd/pandaspigot/console/PandaConsoleCompleter.java
++++ /dev/null
+@@ -1,95 +0,0 @@
+-package com.hpfxd.pandaspigot.console;
+-
+-import net.minecraft.server.DedicatedServer;
+-import org.bukkit.craftbukkit.CraftServer;
+-import org.bukkit.craftbukkit.util.Waitable;
+-import org.bukkit.event.server.TabCompleteEvent;
+-import org.jline.reader.Candidate;
+-import org.jline.reader.Completer;
+-import org.jline.reader.LineReader;
+-import org.jline.reader.ParsedLine;
+-
+-import java.util.Collections;
+-import java.util.List;
+-import java.util.concurrent.ExecutionException;
+-import java.util.logging.Level;
+-
+-public class PandaConsoleCompleter implements Completer {
+-    private final DedicatedServer server;
+-    
+-    public PandaConsoleCompleter(DedicatedServer server) {
+-        this.server = server;
+-    }
+-    
+-    @Override
+-    public void complete(LineReader reader, ParsedLine line, List<Candidate> candidates) {
+-        // Async Tab Completion
+-        com.destroystokyo.paper.event.server.AsyncTabCompleteEvent event;
+-        java.util.List<String> completions = new java.util.ArrayList<>();
+-        event = new com.destroystokyo.paper.event.server.AsyncTabCompleteEvent(server.server.getConsoleSender(), completions, line.line(), true, null);
+-        server.server.getPluginManager().callEvent(event);
+-        completions = event.isCancelled() ? com.google.common.collect.ImmutableList.of() : event.getCompletions();
+-
+-        if (event.isCancelled() || event.isHandled()) {
+-            // Still fire sync event with the provided completions, if someone is listening
+-            if (!event.isCancelled() && TabCompleteEvent.getHandlerList().getRegisteredListeners().length > 0) {
+-                List<String> finalCompletions = completions;
+-                Waitable<List<String>> syncCompletions = new Waitable<List<String>>() {
+-                    @Override
+-                    protected List<String> evaluate() {
+-                        org.bukkit.event.server.TabCompleteEvent syncEvent = new org.bukkit.event.server.TabCompleteEvent(server.server.getConsoleSender(), line.line(), finalCompletions);
+-                        server.server.getPluginManager().callEvent(event);
+-                        return !syncEvent.isCancelled() ? syncEvent.getCompletions() : com.google.common.collect.ImmutableList.of();
+-                    }
+-                };
+-                server.processQueue.add(syncCompletions);
+-                try {
+-                    completions = syncCompletions.get();
+-                } catch (InterruptedException | ExecutionException e1) {
+-                    e1.printStackTrace();
+-                }
+-            }
+-
+-            if (!completions.isEmpty()) {
+-                candidates.addAll(completions.stream().map(Candidate::new).collect(java.util.stream.Collectors.toList()));
+-            }
+-            return;
+-        }
+-
+-        CompletionWaiter waiter = new CompletionWaiter(line.line());
+-        this.server.processQueue.add(waiter);
+-        
+-        try {
+-            List<String> offers = waiter.get(); // wait until completions get processed on main thread
+-            
+-            for (String offer : offers) {
+-                if (offer.isEmpty()) continue;
+-                
+-                candidates.add(new Candidate(offer));
+-            }
+-        } catch (ExecutionException e) {
+-            this.server.server.getLogger().log(Level.WARNING, "Unhandled exception when tab completing", e);
+-        } catch (InterruptedException e) {
+-            Thread.currentThread().interrupt();
+-        }
+-    }
+-    
+-    private class CompletionWaiter extends Waitable<List<String>> {
+-        private final String buffer;
+-    
+-        private CompletionWaiter(String buffer) {
+-            this.buffer = buffer;
+-        }
+-    
+-        @Override
+-        protected List<String> evaluate() {
+-            final CraftServer server = PandaConsoleCompleter.this.server.server;
+-            final List<String> offers = server.getCommandMap().tabComplete(server.getConsoleSender(), buffer);
+-
+-            TabCompleteEvent tabEvent = new TabCompleteEvent(server.getConsoleSender(), buffer, offers == null ? Collections.emptyList() : offers);
+-            server.getPluginManager().callEvent(tabEvent);
+-
+-            return tabEvent.isCancelled() ? Collections.emptyList() : tabEvent.getCompletions();
+-        }
+-    }
+-}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/tickloop/IAsyncHandler.java b/src/main/java/com/hpfxd/pandaspigot/tickloop/IAsyncHandler.java
+deleted file mode 100644
+index 28d8bb697cc9dd1520d3a46aec1c856765b1452f..0000000000000000000000000000000000000000
+--- a/src/main/java/com/hpfxd/pandaspigot/tickloop/IAsyncHandler.java
++++ /dev/null
+@@ -1,141 +0,0 @@
+-package com.hpfxd.pandaspigot.tickloop;
+-
+-import org.apache.logging.log4j.LogManager;
+-import org.apache.logging.log4j.Logger;
+-
+-import java.util.Queue;
+-import java.util.concurrent.CompletableFuture;
+-import java.util.concurrent.ConcurrentLinkedQueue;
+-import java.util.concurrent.Executor;
+-import java.util.concurrent.locks.LockSupport;
+-import java.util.function.BooleanSupplier;
+-import java.util.function.Supplier;
+-
+-public abstract class IAsyncHandler<R extends Runnable> implements Executor {
+-    private static final Logger LOGGER = LogManager.getLogger();
+-    private final String name;
+-    private final Queue<R> pendingRunnables = new ConcurrentLinkedQueue<>();
+-    private int terminateCount;
+-
+-    protected IAsyncHandler(String name) {
+-        this.name = name;
+-    }
+-
+-    protected abstract R packUpRunnable(Runnable runnable);
+-
+-    protected abstract boolean shouldRun(R task);
+-
+-    public boolean isMainThread() {
+-        return Thread.currentThread() == this.getMainThread();
+-    }
+-
+-    protected abstract Thread getMainThread();
+-
+-    protected boolean executables() {
+-        return !this.isMainThread();
+-    }
+-
+-    public int getPendingRunnables() {
+-        return this.pendingRunnables.size();
+-    }
+-
+-    public String getName() {
+-        return this.name;
+-    }
+-
+-    public <V> CompletableFuture<V> submit(Supplier<V> task) {
+-        return this.executables() ? CompletableFuture.supplyAsync(task, this)
+-            : CompletableFuture.completedFuture(task.get());
+-    }
+-
+-    private CompletableFuture<Void> submitAsync(Runnable runnable) {
+-        return CompletableFuture.supplyAsync(() -> {
+-            runnable.run();
+-            return null;
+-        }, this);
+-    }
+-
+-    public CompletableFuture<Void> submit(Runnable task) {
+-        if (this.executables()) {
+-            return this.submitAsync(task);
+-        } else {
+-            task.run();
+-            return CompletableFuture.completedFuture(null);
+-        }
+-    }
+-
+-    public void performBlocking(Runnable runnable) {
+-        if (!this.isMainThread()) {
+-            this.submitAsync(runnable).join();
+-        } else {
+-            runnable.run();
+-        }
+-
+-    }
+-
+-    public void call(R runnable) {
+-        this.pendingRunnables.add(runnable);
+-        LockSupport.unpark(this.getMainThread());
+-    }
+-
+-    @Override
+-    public void execute(Runnable runnable) {
+-        if (this.executables()) {
+-            this.call(this.packUpRunnable(runnable));
+-        } else {
+-            runnable.run();
+-        }
+-
+-    }
+-
+-    protected void clearAllRunnable() {
+-        this.pendingRunnables.clear();
+-    }
+-
+-    public void runAllRunnable() {
+-        while (this.drawRunnable()) {
+-        }
+-    }
+-
+-    public boolean drawRunnable() {
+-        R runnable = this.pendingRunnables.peek();
+-        if (runnable == null) {
+-            return false;
+-        } else if (this.terminateCount == 0 && !this.shouldRun(runnable)) {
+-            return false;
+-        } else {
+-            this.doRunnable(this.pendingRunnables.remove());
+-            return true;
+-        }
+-    }
+-
+-    public void controlTerminate(BooleanSupplier stopCondition) {
+-        ++this.terminateCount;
+-
+-        try {
+-            while (!stopCondition.getAsBoolean()) {
+-                if (!this.drawRunnable()) {
+-                    this.waitForRuns();
+-                }
+-            }
+-        } finally {
+-            --this.terminateCount;
+-        }
+-
+-    }
+-
+-    protected void waitForRuns() {
+-        Thread.yield();
+-        LockSupport.parkNanos("waiting for tasks", 100000L);
+-    }
+-
+-    protected void doRunnable(R task) {
+-        try {
+-            task.run();
+-        } catch (Exception e) {
+-            if (e.getCause() instanceof ThreadDeath) throw e;
+-            LOGGER.fatal("Error executing task on {}", this.getName(), e);
+-        }
+-
+-    }
+-}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/tickloop/ReentrantIAsyncHandler.java b/src/main/java/com/hpfxd/pandaspigot/tickloop/ReentrantIAsyncHandler.java
+deleted file mode 100644
+index 0d4564457d853ac16b069680e82e16a6b5610093..0000000000000000000000000000000000000000
+--- a/src/main/java/com/hpfxd/pandaspigot/tickloop/ReentrantIAsyncHandler.java
++++ /dev/null
+@@ -1,29 +0,0 @@
+-package com.hpfxd.pandaspigot.tickloop;
+-
+-public abstract class ReentrantIAsyncHandler<R extends Runnable> extends IAsyncHandler<R> {
+-
+-    private int count;
+-
+-    public ReentrantIAsyncHandler(String name) {
+-        super(name);
+-    }
+-
+-    @Override
+-    protected boolean executables() {
+-        return this.runningTask() || super.executables();
+-    }
+-
+-    protected boolean runningTask() {
+-        return this.count != 0;
+-    }
+-
+-    @Override
+-    protected void doRunnable(R task) {
+-        ++this.count;
+-        try {
+-            super.doRunnable(task);
+-        } finally {
+-            --this.count;
+-        }
+-    }
+-}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/tickloop/TasksPerTick.java b/src/main/java/com/hpfxd/pandaspigot/tickloop/TasksPerTick.java
+deleted file mode 100644
+index c6dd7e4933ef93cb887ccf937af34d07398985e7..0000000000000000000000000000000000000000
+--- a/src/main/java/com/hpfxd/pandaspigot/tickloop/TasksPerTick.java
++++ /dev/null
+@@ -1,20 +0,0 @@
+-package com.hpfxd.pandaspigot.tickloop;
+-
+-public class TasksPerTick implements Runnable {
+-    private final int tick;
+-    private final Runnable task;
+-
+-    public TasksPerTick(int creationTicks, Runnable task) {
+-        this.tick = creationTicks;
+-        this.task = task;
+-    }
+-
+-    public int getTick() {
+-        return tick;
+-    }
+-
+-    @Override
+-    public void run() {
+-        task.run();
+-    }
+-}
+diff --git a/src/main/java/com/hpfxd/pandaspigot/util/IntervalledCounter.java b/src/main/java/com/hpfxd/pandaspigot/util/IntervalledCounter.java
+deleted file mode 100644
+index d61d44e8e1126ed3bea6e633cc0bdebb0a148828..0000000000000000000000000000000000000000
+--- a/src/main/java/com/hpfxd/pandaspigot/util/IntervalledCounter.java
++++ /dev/null
+@@ -1,116 +0,0 @@
+-package com.hpfxd.pandaspigot.util;
+-
+-// Originally from PaperMC
+-public final class IntervalledCounter {
+-
+-    protected long[] times;
+-    protected long[] counts;
+-    protected final long interval;
+-    protected long minTime;
+-    protected long sum;
+-    protected int head; // inclusive
+-    protected int tail; // exclusive
+-
+-    public IntervalledCounter(final long interval) {
+-        this.times = new long[8];
+-        this.counts = new long[8];
+-        this.interval = interval;
+-    }
+-
+-    public void updateCurrentTime() {
+-        this.updateCurrentTime(System.nanoTime());
+-    }
+-
+-    public void updateCurrentTime(final long currentTime) {
+-        long sum = this.sum;
+-        int head = this.head;
+-        final int tail = this.tail;
+-        final long minTime = currentTime - this.interval;
+-
+-        final int arrayLen = this.times.length;
+-
+-        // guard against overflow by using subtraction
+-        while (head != tail && this.times[head] - minTime < 0) {
+-            sum -= this.counts[head];
+-            // there are two ways we can do this:
+-            // 1. free the count when adding
+-            // 2. free it now
+-            // option #2
+-            this.counts[head] = 0;
+-            if (++head >= arrayLen) {
+-                head = 0;
+-            }
+-        }
+-
+-        this.sum = sum;
+-        this.head = head;
+-        this.minTime = minTime;
+-    }
+-
+-    public void addTime(final long currTime) {
+-        this.addTime(currTime, 1L);
+-    }
+-
+-    public void addTime(final long currTime, final long count) {
+-        // guard against overflow by using subtraction
+-        if (currTime - this.minTime < 0) {
+-            return;
+-        }
+-        int nextTail = (this.tail + 1) % this.times.length;
+-        if (nextTail == this.head) {
+-            this.resize();
+-            nextTail = (this.tail + 1) % this.times.length;
+-        }
+-
+-        this.times[this.tail] = currTime;
+-        this.counts[this.tail] += count;
+-        this.sum += count;
+-        this.tail = nextTail;
+-    }
+-
+-    public void updateAndAdd(final int count) {
+-        final long currTime = System.nanoTime();
+-        this.updateCurrentTime(currTime);
+-        this.addTime(currTime, count);
+-    }
+-
+-    public void updateAndAdd(final int count, final long currTime) {
+-        this.updateCurrentTime(currTime);
+-        this.addTime(currTime, count);
+-    }
+-
+-    private void resize() {
+-        final long[] oldElements = this.times;
+-        final long[] oldCounts = this.counts;
+-        final long[] newElements = new long[this.times.length * 2];
+-        final long[] newCounts = new long[this.times.length * 2];
+-        this.times = newElements;
+-        this.counts = newCounts;
+-
+-        final int head = this.head;
+-        final int tail = this.tail;
+-        final int size = tail >= head ? (tail - head) : (tail + (oldElements.length - head));
+-        this.head = 0;
+-        this.tail = size;
+-
+-        if (tail >= head) {
+-            System.arraycopy(oldElements, head, newElements, 0, size);
+-            System.arraycopy(oldCounts, head, newCounts, 0, size);
+-        } else {
+-            System.arraycopy(oldElements, head, newElements, 0, oldElements.length - head);
+-            System.arraycopy(oldElements, 0, newElements, oldElements.length - head, tail);
+-
+-            System.arraycopy(oldCounts, head, newCounts, 0, oldCounts.length - head);
+-            System.arraycopy(oldCounts, 0, newCounts, oldCounts.length - head, tail);
+-        }
+-    }
+-
+-    // returns in units per second
+-    public double getRate() {
+-        return this.size() / (this.interval * 1.0e-9);
+-    }
+-
+-    public long size() {
+-        return this.sum;
+-    }
+-}
