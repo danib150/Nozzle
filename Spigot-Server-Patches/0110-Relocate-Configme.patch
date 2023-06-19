@@ -1,0 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Daniele Bruni <67119358+danib150@users.noreply.github.com>
+Date: Mon, 19 Jun 2023 01:59:33 +0200
+Subject: [PATCH] Relocate Configme
+
+
+diff --git a/build.gradle.kts b/build.gradle.kts
+index 63d804f5ee96f80c0dcd958b457c00111e82f404..2d15b0251647f56118365839cf3491453e22e0f4 100644
+--- a/build.gradle.kts
++++ b/build.gradle.kts
+@@ -47,6 +47,7 @@ tasks {
+             exclude("org.bukkit.craftbukkit.Main*") // don't relocate main class
+         }
+         relocate("net.minecraft.server", "net.minecraft.server.v${minecraftVersion}")
++        relocate("ch.jalu.configme", "it.dbruni.configme")
+     }
+ 
+     named("build") {
