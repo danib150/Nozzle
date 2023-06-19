@@ -1,0 +1,21 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Daniele Bruni <67119358+danib150@users.noreply.github.com>
+Date: Mon, 19 Jun 2023 21:30:26 +0200
+Subject: [PATCH] removed sendVersion
+
+
+diff --git a/src/main/java/org/bukkit/command/defaults/VersionCommand.java b/src/main/java/org/bukkit/command/defaults/VersionCommand.java
+index ff721c424289eac2cf78e7094d65509367dcd79b..d0cb09d409112bb19de29b22c0bb74d19b3863a8 100644
+--- a/src/main/java/org/bukkit/command/defaults/VersionCommand.java
++++ b/src/main/java/org/bukkit/command/defaults/VersionCommand.java
+@@ -45,8 +45,8 @@ public class VersionCommand extends BukkitCommand {
+         if (args.length == 0) {
+             sender.sendMessage(
+                     ChatColor.DARK_GRAY + "> " + ChatColor.WHITE + "This server is running " + ChatColor.GREEN + Bukkit.getName()
+-                            + "\n" + ChatColor.DARK_GRAY + ">" + ChatColor.WHITE + " version " + ChatColor.GREEN + Bukkit.getVersion() + " §8(§fImplementing API version " + ChatColor.GREEN + Bukkit.getBukkitVersion() + "§8)");
+-            sendVersion(sender);
++                            + "\n" + ChatColor.DARK_GRAY + ">" + ChatColor.WHITE + " version " + ChatColor.GREEN + Bukkit.getVersion() + "\n" + "§8(§fImplementing API version " + ChatColor.GREEN + Bukkit.getBukkitVersion() + "§8)");
++            //sendVersion(sender);
+         } else {
+             StringBuilder name = new StringBuilder();
+ 
