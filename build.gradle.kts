@@ -4,7 +4,7 @@ plugins {
 }
 
 allprojects {
-    group = "org.github.paperspigot"
+    group = "it.dbruni.nozzle"
     version = "1.8.8-R0.1-SNAPSHOT"
 
     apply {

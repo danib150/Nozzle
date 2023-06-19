@@ -86,14 +86,14 @@ case "$1" in
         cd "$basedir"
     ;;
     "a" | "api")
-        cd "$basedir/PaperSpigot-API"
+        cd "$basedir/Nozzle-API"
     ;;
     "s" | "server")
-        cd "$basedir/PaperSpigot-Server"
+        cd "$basedir/Nozzle-Server"
     ;;
     "c" | "clean")
-        rm -rf PaperSpigot-API
-        rm -rf PaperSpigot-Server
+        rm -rf Nozzle-API
+        rm -rf Nozzle-Server
         rm -rf work
         echo "Cleaned build files"
     ;;
@@ -108,8 +108,8 @@ case "$1" in
         case "$2" in
             "s" | "server")
             mkdir -p "$basedir/work/Temp"
-            echo "$basedir/PaperSpigot-Server" > "$basedir/work/Temp/PAPER_LAST_EDIT"
-            cd "$basedir/PaperSpigot-Server"
+            echo "$basedir/Nozzle-Server" > "$basedir/work/Temp/PAPER_LAST_EDIT"
+            cd "$basedir/Nozzle-Server"
             (
                 set -e
 
@@ -120,8 +120,8 @@ case "$1" in
             ;;
             "a" | "api")
             mkdir -p "$basedir/work/Temp"
-            echo "$basedir/PaperSpigot-API" > "$basedir/work/Temp/PAPER_LAST_EDIT"
-            cd "$basedir/PaperSpigot-API"
+            echo "$basedir/Nozzle-API" > "$basedir/work/Temp/PAPER_LAST_EDIT"
+            cd "$basedir/Nozzle-API"
             (
                 set -e
 
@@ -163,7 +163,7 @@ case "$1" in
         fi
     ;;
     *)
-        echo "PaperSpigot build tool command. This provides a variety of commands to build and manage the PaperSpigot build"
+        echo "Nozzle build tool command. This provides a variety of commands to build and manage the PaperSpigot build"
         echo "environment. For all of the functionality of this command to be available, you must first run the"
         echo "'install' command. View below for details. For essential building and patching, you do not need to do the install."
         echo ""
@@ -172,13 +172,13 @@ case "$1" in
         echo "  * setup               | Remap, decompile, and patch Minecraft. Can be run from anywhere."
         echo "  * p, patch            | Apply all patches to the project without building it. Can be run from anywhere."
         echo "  * j, jar              | Apply all patches and build the project. Can be run from anywhere."
-        echo "  * c, clean            | Removes all generated files, PaperSpigot-API, PaperSpigot-Server, and work."
+        echo "  * c, clean            | Removes all generated files, Nozzle-API, Nozzle-Server, and work."
         echo "  * con, continue       | Shortcut command for running git am --continue, or git rebase --continue."
         echo ""
         echo " These commands require the install command before use:"
         echo "  * r, root             | Change directory to the root of the project."
-        echo "  * a. api              | Move to the PaperSpigot-API directory."
-        echo "  * s, server           | Move to the PaperSpigot-Server directory."
+        echo "  * a. api              | Move to the Nozzle-API directory."
+        echo "  * s, server           | Move to the Nozzle-Server directory."
         echo "  * e, edit             | Use to edit a specific patch, give it the argument \"server\" or \"api\""
         echo "                        | respectively to edit the correct project. Use the argument \"continue\" after"
         echo "                        | the changes have been made to finish and rebuild patches. Can be called from anywhere."

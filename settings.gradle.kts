@@ -1,7 +1,7 @@
-rootProject.name = "paperspigot-parent"
+rootProject.name = "Nozzle"
 
-this.setupSubproject("paperspigot-server", "PaperSpigot-Server")
-this.setupSubproject("paperspigot-api", "PaperSpigot-API")
+this.setupSubproject("nozzle-server", "Nozzle-Server")
+this.setupSubproject("nozzle-api", "Nozzle-API")
 
 fun setupSubproject(name: String, dir: String) {
     include(":$name")

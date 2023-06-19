@@ -230,8 +230,8 @@ gradle-app.setting
 # other stuff
 Spigot-API
 Spigot-Server
-PaperSpigot-Server
-PaperSpigot-API
+Nozzle-Server
+Nozzle-API
 Bukkit
 CraftBukkit
 Paperclip
