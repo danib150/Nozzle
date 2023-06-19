@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Daniele Bruni <67119358+danib150@users.noreply.github.com>
+Date: Mon, 19 Jun 2023 20:29:39 +0200
+Subject: [PATCH] Added custom plugin list
+
+
+diff --git a/src/main/java/org/bukkit/command/defaults/PluginsCommand.java b/src/main/java/org/bukkit/command/defaults/PluginsCommand.java
+index e21d16793b703189a5f4cf9091ac12f494d0107e..48df7f3fd24c633934d19da05a82789bd22281af 100644
+--- a/src/main/java/org/bukkit/command/defaults/PluginsCommand.java
++++ b/src/main/java/org/bukkit/command/defaults/PluginsCommand.java
+@@ -13,7 +13,7 @@ public class PluginsCommand extends BukkitCommand {
+         this.description = "Gets a list of plugins running on the server";
+         this.usageMessage = "/plugins";
+         this.setPermission("bukkit.command.plugins");
+-        this.setAliases(Arrays.asList("pl"));
++        this.setAliases(Arrays.asList("pl", "pluginslist"));
+     }
+ 
+     @Override
+@@ -38,7 +38,7 @@ public class PluginsCommand extends BukkitCommand {
+             pluginList.append(plugin.getDescription().getName());
+         }
+ 
+-        return "(" + plugins.length + "): " + pluginList.toString();
++        return ChatColor.YELLOW + "Listing " + plugins.length + " plugin" + (plugins.length != 1 ? "s" : "") + ":" + "\n" + ChatColor.WHITE + plugins;
+     }
+ 
+     // Spigot Start

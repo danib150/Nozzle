@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Daniele Bruni <67119358+danib150@users.noreply.github.com>
+Date: Mon, 19 Jun 2023 19:44:38 +0200
+Subject: [PATCH] Fixed API-Version
+
+
+diff --git a/src/main/java/org/bukkit/craftbukkit/util/Versioning.java b/src/main/java/org/bukkit/craftbukkit/util/Versioning.java
+index 3a4b14246bb99b989a4685242ccedd0030e481aa..b6d713c74226af8c059577d5117967a894eda8e0 100644
+--- a/src/main/java/org/bukkit/craftbukkit/util/Versioning.java
++++ b/src/main/java/org/bukkit/craftbukkit/util/Versioning.java
+@@ -11,7 +11,7 @@ public final class Versioning {
+     public static String getBukkitVersion() {
+         String result = "Unknown-Version";
+ 
+-        InputStream stream = Bukkit.class.getClassLoader().getResourceAsStream("META-INF/maven/org.github.paperspigot/paperspigot-api/pom.properties");
++        InputStream stream = Bukkit.class.getClassLoader().getResourceAsStream("META-INF/maven/it.dbruni.nozzle/nozzle-api/pom.properties");
+         Properties properties = new Properties();
+ 
+         if (stream != null) {

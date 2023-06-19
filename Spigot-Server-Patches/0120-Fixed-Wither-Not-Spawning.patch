@@ -1,0 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Daniele Bruni <67119358+danib150@users.noreply.github.com>
+Date: Mon, 19 Jun 2023 20:12:14 +0200
+Subject: [PATCH] Fixed Wither Not Spawning
+
+
+diff --git a/src/main/java/net/minecraft/server/EntityWither.java b/src/main/java/net/minecraft/server/EntityWither.java
+index 6a29a83b3a1fce396aa5213012ab589c3280069d..578e5eb80a9f95e38d4d20bbd63182cedb5fd875 100644
+--- a/src/main/java/net/minecraft/server/EntityWither.java
++++ b/src/main/java/net/minecraft/server/EntityWither.java
+@@ -49,7 +49,6 @@ public class EntityWither extends EntityMonster implements IRangedEntity {
+     protected void h() {
+         super.h();
+         this.datawatcher.a(17,0);
+-        this.datawatcher.a(17, 0);
+         this.datawatcher.a(18, 0);
+         this.datawatcher.a(19, 0);
+         this.datawatcher.a(20, 0);

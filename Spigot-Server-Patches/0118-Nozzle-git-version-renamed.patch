@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Daniele Bruni <67119358+danib150@users.noreply.github.com>
+Date: Mon, 19 Jun 2023 19:33:15 +0200
+Subject: [PATCH] Nozzle git version renamed
+
+
+diff --git a/build.gradle.kts b/build.gradle.kts
+index b5c199d51b11f3ae805db8bbeb5cd4d8ba70cf11..c1b5f5349b69c811e4b648a723808c8eea5b710f 100644
+--- a/build.gradle.kts
++++ b/build.gradle.kts
+@@ -61,11 +61,12 @@ tasks {
+     jar {
+         archiveClassifier.set("original")
+         manifest {
+-            val gitHash = project.parent!!.ext["gitHash"]
++            val ver = "1.0-SNAPSHOT"
++            //val version = project.parent!!.ext["gitHash"]
+             attributes(
+                 "Main-Class" to "org.bukkit.craftbukkit.Main",
+                 "Implementation-Title" to "CraftBukkit",
+-                "Implementation-Version" to "git-PaperSpigot-$gitHash",
++                "Implementation-Version" to "git-Nozzle-$ver",
+                 "Implementation-Vendor" to "Bukkit Team",
+                 "Specification-Title" to "Bukkit",
+                 "Specification-Version" to project.version,

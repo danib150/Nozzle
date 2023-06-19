@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Daniele Bruni <67119358+danib150@users.noreply.github.com>
+Date: Mon, 19 Jun 2023 20:59:55 +0200
+Subject: [PATCH] Fixed plugin List
+
+
+diff --git a/src/main/java/org/bukkit/command/defaults/PluginsCommand.java b/src/main/java/org/bukkit/command/defaults/PluginsCommand.java
+index 48df7f3fd24c633934d19da05a82789bd22281af..24295db8b996673604de1c85f6d640faee0c5183 100644
+--- a/src/main/java/org/bukkit/command/defaults/PluginsCommand.java
++++ b/src/main/java/org/bukkit/command/defaults/PluginsCommand.java
+@@ -20,7 +20,7 @@ public class PluginsCommand extends BukkitCommand {
+     public boolean execute(CommandSender sender, String currentAlias, String[] args) {
+         if (!testPermission(sender)) return true;
+ 
+-        sender.sendMessage("Plugins " + getPluginList());
++        sender.sendMessage(getPluginList());
+         return true;
+     }
+ 
+@@ -38,7 +38,7 @@ public class PluginsCommand extends BukkitCommand {
+             pluginList.append(plugin.getDescription().getName());
+         }
+ 
+-        return ChatColor.YELLOW + "Listing " + plugins.length + " plugin" + (plugins.length != 1 ? "s" : "") + ":" + "\n" + ChatColor.WHITE + plugins;
++        return ChatColor.YELLOW + "Listing " + plugins.length + " plugin" + (plugins.length != 1 ? "s" : "") + ":" + "\n" + ChatColor.WHITE + pluginList;
+     }
+ 
+     // Spigot Start
