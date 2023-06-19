@@ -43,8 +43,8 @@ jobs:
         run: |
           chmod -R +x ./scripts/
           chmod +x gradlew
-          chmod +x paper
-      - name: Setup PaperSpigot environment
+          chmod +x nozzle
+      - name: Setup Nozzle environment
         run: ./nozzle setup
-      - name: Build PaperSpigot JAR
+      - name: Build Nozzle JAR
         run: ./gradlew build
