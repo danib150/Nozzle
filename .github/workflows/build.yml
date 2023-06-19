@@ -45,6 +45,6 @@ jobs:
           chmod +x gradlew
           chmod +x paper
       - name: Setup PaperSpigot environment
-        run: ./paper setup
+        run: ./nozzle setup
       - name: Build PaperSpigot JAR
         run: ./gradlew build

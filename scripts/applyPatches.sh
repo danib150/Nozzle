@@ -102,8 +102,8 @@ fi
 
 # Apply PaperSpigot
 (
-    applyPatch "Spigot-API" PaperSpigot-API HEAD Spigot-API-Patches &&
-    applyPatch "Spigot-Server" PaperSpigot-Server HEAD Spigot-Server-Patches
+    applyPatch "Spigot-API" Nozzle-API HEAD Spigot-API-Patches &&
+    applyPatch "Spigot-Server" Nozzle-Server HEAD Spigot-Server-Patches
     cd "$basedir"
 ) || (
     echo "Failed to apply Paper Patches"

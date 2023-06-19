@@ -60,12 +60,12 @@ function savePatches {
     echo "Patches saved for $what to $patch_folder/"
 }
 
-savePatches "$workdir/Spigot-API" "PaperSpigot-API" "Spigot-API-Patches"
-if [ -f "$basedir/PaperSpigot-API/.git/patch-apply-failed" ]; then
-    echo "$(color 1 31)[[[ WARNING ]]] $(color 1 33)- Not saving PaperSpigot-Server as it appears PaperSpigot-API did not apply clean.$(colorend)"
-    echo "$(color 1 33)If this is a mistake, delete $(color 1 34)PaperSpigot-API/.git/patch-apply-failed$(color 1 33) and run rebuild again.$(colorend)"
-    echo "$(color 1 33)Otherwise, rerun ./paper patch to have a clean PaperSpigot-API apply so the latest PaperSpigot-Server can build.$(colorend)"
+savePatches "$workdir/Spigot-API" "Nozzle-API" "Spigot-API-Patches"
+if [ -f "$basedir/Nozzle-API/.git/patch-apply-failed" ]; then
+    echo "$(color 1 31)[[[ WARNING ]]] $(color 1 33)- Not saving Nozzle-Server as it appears PaperSpigot-API did not apply clean.$(colorend)"
+    echo "$(color 1 33)If this is a mistake, delete $(color 1 34)Nozzle-API/.git/patch-apply-failed$(color 1 33) and run rebuild again.$(colorend)"
+    echo "$(color 1 33)Otherwise, rerun ./paper patch to have a clean Nozzle-API apply so the latest PaperSpigot-Server can build.$(colorend)"
 else
-    savePatches "$workdir/Spigot-Server" "PaperSpigot-Server" "Spigot-Server-Patches"
+    savePatches "$workdir/Spigot-Server" "Nozzle-Server" "Spigot-Server-Patches"
 fi
 ) || exit 1
