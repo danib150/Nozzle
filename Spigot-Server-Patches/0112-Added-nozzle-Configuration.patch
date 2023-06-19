@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Daniele Bruni <67119358+danib150@users.noreply.github.com>
+Date: Mon, 19 Jun 2023 02:25:02 +0200
+Subject: [PATCH] Added nozzle Configuration
+
+
+diff --git a/src/main/java/it/dbruni/nozzlemc/NozzleServer.java b/src/main/java/it/dbruni/nozzlemc/NozzleServer.java
+index c383af24bfe587b116344a446d0b96ea82818bcb..559b291b22de099e76259a714987d1d677b2b05b 100644
+--- a/src/main/java/it/dbruni/nozzlemc/NozzleServer.java
++++ b/src/main/java/it/dbruni/nozzlemc/NozzleServer.java
+@@ -16,7 +16,7 @@ public class NozzleServer {
+ 
+     public static SettingsManager settingsManager;
+     private void init() {
+-        settingsManager = SettingsManagerBuilder.withYamlFile(file)
++        settingsManager = SettingsManagerBuilder.withYamlFile(file.toPath())
+                 .useDefaultMigrationService()
+                 .configurationData(NozzleConfiguration.class)
+                 .create();

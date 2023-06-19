@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Daniele Bruni <67119358+danib150@users.noreply.github.com>
+Date: Mon, 19 Jun 2023 12:42:58 +0200
+Subject: [PATCH] PT7
+
+
+diff --git a/src/main/java/it/dbruni/nozzlemc/configuration/NozzleConfiguration.java b/src/main/java/it/dbruni/nozzlemc/configuration/NozzleConfiguration.java
+index fe17f8ce9fb89d0c66e217da611d40397746a881..197b03c9a1ea1cde9c38e4ff0362bcdd6e381ff7 100644
+--- a/src/main/java/it/dbruni/nozzlemc/configuration/NozzleConfiguration.java
++++ b/src/main/java/it/dbruni/nozzlemc/configuration/NozzleConfiguration.java
+@@ -26,7 +26,7 @@ public class NozzleConfiguration {
+     private static File CONFIG_FILE;
+     private static final String HEADER = "This is the main configuration file for Nozzle.\n"
+             + "As you can see, there's tons to configure. Some options may impact gameplay, so use\n"
+-            + "with caution, and make sure you know what each option does before configuring.";
++            + "with caution, and make sure you know what each option does before configuring.\n";
+     public static YamlConfiguration config;
+     static int version;
+     static Map<String, Command> commands;
+@@ -38,7 +38,7 @@ public class NozzleConfiguration {
+         try
+         {
+             config.load ( CONFIG_FILE );
+-        } catch ( IOException ex )
++        } catch ( IOException ignored)
+         {
+         } catch ( InvalidConfigurationException ex )
+         {
+@@ -48,20 +48,14 @@ public class NozzleConfiguration {
+         config.options().header( HEADER );
+         config.options().copyDefaults( true );
+ 
+-        commands = new HashMap<String, Command>();
++        commands = new HashMap<>();
+ 
+-        version = getInt( "config-version", 9 );
++        version = getInt( "config-version", 9);
+         set( "config-version", 9 );
+-        readConfig( NozzleConfiguration.class, null );
++        readConfig( NozzleConfiguration.class, null);
+     }
+ 
+-    public static void registerCommands()
+-    {
+-        for ( Map.Entry<String, Command> entry : commands.entrySet() )
+-        {
+-            MinecraftServer.getServer().server.getCommandMap().register( entry.getKey(), "PaperSpigot", entry.getValue() );
+-        }
+-    }
++
+ 
+     static void readConfig(Class<?> clazz, Object instance)
+     {

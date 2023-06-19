@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Daniele Bruni <67119358+danib150@users.noreply.github.com>
+Date: Mon, 19 Jun 2023 12:56:10 +0200
+Subject: [PATCH] PT9
+
+
+diff --git a/src/main/java/net/minecraft/server/DedicatedServer.java b/src/main/java/net/minecraft/server/DedicatedServer.java
+index fb1dd62890d35f7b59d3edc28d8e7c7e707c62f9..17522f48d0620e8b7e3ff42f9a891a2d84333cd2 100644
+--- a/src/main/java/net/minecraft/server/DedicatedServer.java
++++ b/src/main/java/net/minecraft/server/DedicatedServer.java
+@@ -173,7 +173,7 @@ public class DedicatedServer extends MinecraftServer implements IMinecraftServer
+                 this.setPort(this.propertyManager.getInt("server-port", 25565));
+             }
+             // Spigot start
+-            this.a((PlayerList) (new DedicatedPlayerList(this)));
++            this.a(new DedicatedPlayerList(this));
+             org.spigotmc.SpigotConfig.init((File) options.valueOf("spigot-settings"));
+             org.spigotmc.SpigotConfig.registerCommands();
+             // Spigot end
+diff --git a/src/main/java/org/bukkit/craftbukkit/Main.java b/src/main/java/org/bukkit/craftbukkit/Main.java
+index 16b97bcfab4cf0047675025e5b5fba093719b2c2..07d94b248f7d007f4c17251c1fafb0bc4acb56cc 100644
+--- a/src/main/java/org/bukkit/craftbukkit/Main.java
++++ b/src/main/java/org/bukkit/craftbukkit/Main.java
+@@ -137,11 +137,12 @@ public class Main {
+                 // PaperSpigot End
+ 
+                 //Nozzle Start
+-                acceptsAll(asList("nozzle", "nozzle-settings", "File for nozzle settings"))
++                acceptsAll(asList("nozzle", "nozzle-settings"), "File for nozzle settings")
+                         .withRequiredArg()
+                         .ofType(File.class)
+                         .defaultsTo(new File("nozzle.yml"))
+                         .describedAs("Yml file");
++                //Nozzle End
+             }
+         };
+ 

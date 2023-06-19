@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Daniele Bruni <67119358+danib150@users.noreply.github.com>
+Date: Mon, 19 Jun 2023 02:33:25 +0200
+Subject: [PATCH] Configuration PT5
+
+
+diff --git a/src/main/java/org/bukkit/craftbukkit/Main.java b/src/main/java/org/bukkit/craftbukkit/Main.java
+index aaa6dfb9e747c038fa76f03018c8d158fd21db0c..4fcaa10bd7d436cff1d0eca5f0bbd8ff721ea6d6 100644
+--- a/src/main/java/org/bukkit/craftbukkit/Main.java
++++ b/src/main/java/org/bukkit/craftbukkit/Main.java
+@@ -19,9 +19,6 @@ public class Main {
+     public static boolean useConsole = true;
+ 
+     public static void main(String[] args) {
+-        // Nozzle Start
+-        new NozzleServer(new File("nozzle.yml"));
+-        //Nozzle End
+ 
+         // Todo: Installation script
+         OptionParser parser = new OptionParser() {
+@@ -141,6 +138,8 @@ public class Main {
+ 
+         OptionSet options = null;
+ 
++        new NozzleServer(new File("nozzle.yml"));
++
+         try {
+             options = parser.parse(args);
+         } catch (joptsimple.OptionException ex) {

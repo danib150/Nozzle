@@ -1,0 +1,97 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Daniele Bruni <67119358+danib150@users.noreply.github.com>
+Date: Mon, 19 Jun 2023 02:12:34 +0200
+Subject: [PATCH] Fix pt.2
+
+
+diff --git a/src/main/java/it/dbruni/nozzlemc/NozzleServer.java b/src/main/java/it/dbruni/nozzlemc/NozzleServer.java
+index bb6d12b5b737fa45d60c9189fcb8843f8b793d3d..c383af24bfe587b116344a446d0b96ea82818bcb 100644
+--- a/src/main/java/it/dbruni/nozzlemc/NozzleServer.java
++++ b/src/main/java/it/dbruni/nozzlemc/NozzleServer.java
+@@ -14,7 +14,7 @@ public class NozzleServer {
+         init();
+     }
+ 
+-    private static SettingsManager settingsManager;
++    public static SettingsManager settingsManager;
+     private void init() {
+         settingsManager = SettingsManagerBuilder.withYamlFile(file)
+                 .useDefaultMigrationService()
+@@ -22,9 +22,7 @@ public class NozzleServer {
+                 .create();
+     }
+ 
+-    public static SettingsManager getConfiguration() {
+-        return settingsManager;
+-    }
++
+ 
+ 
+ }
+diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+index ae1f371ce1a6c48cf159ed7abe910a4757a17972..f6ed9a86593df5ffa130d9e3d31e37efb8a0780e 100644
+--- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+@@ -265,7 +265,7 @@ public class ChunkProviderServer implements IChunkProvider {
+ 
+     public void saveChunkNOP(Chunk chunk) {
+         // Nozzle Start
+-        if (!NozzleServer.getConfiguration().getProperty(NozzleConfiguration.SAVE_WORLDS)) return;
++        if (!NozzleServer.settingsManager.getProperty(NozzleConfiguration.SAVE_WORLDS)) return;
+         // Nozzle End
+ 
+         // NMS Start
+@@ -285,7 +285,7 @@ public class ChunkProviderServer implements IChunkProvider {
+ 
+ 
+         if (this.chunkLoader != null) {
+-            if (!NozzleServer.getConfiguration().getProperty(NozzleConfiguration.SAVE_WORLDS)) {
++            if (!NozzleServer.settingsManager.getProperty(NozzleConfiguration.SAVE_WORLDS)) {
+                 chunk.setLastSaved(this.world.getTime());
+                 return;
+             }
+diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
+index 5cfd6f255007c4d229903a6c79447f1617bd49d9..ed3ca998c2d7b0b74db7c72b2e6042bf82f4021c 100644
+--- a/src/main/java/net/minecraft/server/WorldServer.java
++++ b/src/main/java/net/minecraft/server/WorldServer.java
+@@ -985,7 +985,7 @@ public class WorldServer extends World implements IAsyncTaskHandler {
+ 
+     protected void a() throws ExceptionWorldConflict {
+ 
+-        if (!NozzleServer.getConfiguration().getProperty(NozzleConfiguration.SAVE_WORLDS)) return;
++        if (!NozzleServer.settingsManager.getProperty(NozzleConfiguration.SAVE_WORLDS)) return;
+ 
+ 
+         this.checkSession();
+@@ -1132,7 +1132,7 @@ public class WorldServer extends World implements IAsyncTaskHandler {
+     }
+ 
+     public void saveLevel() {
+-        if (!NozzleServer.getConfiguration().getProperty(NozzleConfiguration.SAVE_WORLDS)) return;
++        if (!NozzleServer.settingsManager.getProperty(NozzleConfiguration.SAVE_WORLDS)) return;
+ 
+         this.dataManager.a();
+     }
+diff --git a/src/main/java/org/bukkit/craftbukkit/Main.java b/src/main/java/org/bukkit/craftbukkit/Main.java
+index c76322629e390b073f6b493d63705b130c08cbb9..aaa6dfb9e747c038fa76f03018c8d158fd21db0c 100644
+--- a/src/main/java/org/bukkit/craftbukkit/Main.java
++++ b/src/main/java/org/bukkit/craftbukkit/Main.java
+@@ -19,6 +19,10 @@ public class Main {
+     public static boolean useConsole = true;
+ 
+     public static void main(String[] args) {
++        // Nozzle Start
++        new NozzleServer(new File("nozzle.yml"));
++        //Nozzle End
++
+         // Todo: Installation script
+         OptionParser parser = new OptionParser() {
+             {
+@@ -206,7 +210,6 @@ public class Main {
+             }
+ 
+             // Nozzle Start
+-            new NozzleServer(new File("nozzle.yml"));
+         }
+     }
+ 

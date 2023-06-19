@@ -1,0 +1,356 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Daniele Bruni <67119358+danib150@users.noreply.github.com>
+Date: Mon, 19 Jun 2023 02:56:07 +0200
+Subject: [PATCH] Pt6
+
+
+diff --git a/src/main/java/it/dbruni/nozzlemc/NozzleServer.java b/src/main/java/it/dbruni/nozzlemc/NozzleServer.java
+deleted file mode 100644
+index 559b291b22de099e76259a714987d1d677b2b05b..0000000000000000000000000000000000000000
+--- a/src/main/java/it/dbruni/nozzlemc/NozzleServer.java
++++ /dev/null
+@@ -1,28 +0,0 @@
+-package it.dbruni.nozzlemc;
+-
+-import ch.jalu.configme.SettingsManager;
+-import ch.jalu.configme.SettingsManagerBuilder;
+-import it.dbruni.nozzlemc.configuration.NozzleConfiguration;
+-
+-import java.io.File;
+-
+-public class NozzleServer {
+-    private final File file;
+-
+-    public NozzleServer(File file) {
+-        this.file = file;
+-        init();
+-    }
+-
+-    public static SettingsManager settingsManager;
+-    private void init() {
+-        settingsManager = SettingsManagerBuilder.withYamlFile(file.toPath())
+-                .useDefaultMigrationService()
+-                .configurationData(NozzleConfiguration.class)
+-                .create();
+-    }
+-
+-
+-
+-
+-}
+diff --git a/src/main/java/it/dbruni/nozzlemc/configuration/NozzleConfiguration.java b/src/main/java/it/dbruni/nozzlemc/configuration/NozzleConfiguration.java
+index ef4ee9e2b95cb34fcb3377bee249cc9f84fcf5c9..fe17f8ce9fb89d0c66e217da611d40397746a881 100644
+--- a/src/main/java/it/dbruni/nozzlemc/configuration/NozzleConfiguration.java
++++ b/src/main/java/it/dbruni/nozzlemc/configuration/NozzleConfiguration.java
+@@ -1,11 +1,145 @@
+ package it.dbruni.nozzlemc.configuration;
+ 
+-import ch.jalu.configme.Comment;
+-import ch.jalu.configme.SettingsHolder;
+-import ch.jalu.configme.properties.Property;
+-import ch.jalu.configme.properties.PropertyInitializer;
+-
+-public class NozzleConfiguration implements SettingsHolder {
+-    @Comment("Save world chunks every tick specified by bukkit.yml")
+-    public static Property<Boolean> SAVE_WORLDS = PropertyInitializer.newProperty("nozzle.worlds.save-world-chunks", true);
++import com.google.common.base.Throwables;
++import java.io.File;
++import java.io.IOException;
++import java.lang.reflect.Field;
++import java.lang.reflect.InvocationTargetException;
++import java.lang.reflect.Method;
++import java.lang.reflect.Modifier;
++import java.util.*;
++import java.util.logging.Level;
++
++import net.minecraft.server.Item;
++import net.minecraft.server.Items;
++import net.minecraft.server.MinecraftServer;
++import org.apache.commons.lang.StringUtils;
++import org.bukkit.Bukkit;
++import org.bukkit.Material;
++import org.bukkit.command.Command;
++import org.bukkit.configuration.InvalidConfigurationException;
++import org.bukkit.configuration.file.YamlConfiguration;
++import org.github.paperspigot.PaperSpigotConfig;
++
++public class NozzleConfiguration {
++
++    private static File CONFIG_FILE;
++    private static final String HEADER = "This is the main configuration file for Nozzle.\n"
++            + "As you can see, there's tons to configure. Some options may impact gameplay, so use\n"
++            + "with caution, and make sure you know what each option does before configuring.";
++    public static YamlConfiguration config;
++    static int version;
++    static Map<String, Command> commands;
++
++    public static void init(File configFile)
++    {
++        CONFIG_FILE = configFile;
++        config = new YamlConfiguration();
++        try
++        {
++            config.load ( CONFIG_FILE );
++        } catch ( IOException ex )
++        {
++        } catch ( InvalidConfigurationException ex )
++        {
++            Bukkit.getLogger().log( Level.SEVERE, "Could not load paper.yml, please correct your syntax errors", ex );
++            throw Throwables.propagate( ex );
++        }
++        config.options().header( HEADER );
++        config.options().copyDefaults( true );
++
++        commands = new HashMap<String, Command>();
++
++        version = getInt( "config-version", 9 );
++        set( "config-version", 9 );
++        readConfig( NozzleConfiguration.class, null );
++    }
++
++    public static void registerCommands()
++    {
++        for ( Map.Entry<String, Command> entry : commands.entrySet() )
++        {
++            MinecraftServer.getServer().server.getCommandMap().register( entry.getKey(), "PaperSpigot", entry.getValue() );
++        }
++    }
++
++    static void readConfig(Class<?> clazz, Object instance)
++    {
++        for ( Method method : clazz.getDeclaredMethods() )
++        {
++            if ( Modifier.isPrivate( method.getModifiers() ) )
++            {
++                if ( method.getParameterTypes().length == 0 && method.getReturnType() == Void.TYPE )
++                {
++                    try
++                    {
++                        method.setAccessible( true );
++                        method.invoke( instance );
++                    } catch ( InvocationTargetException ex )
++                    {
++                        throw Throwables.propagate( ex.getCause() );
++                    } catch ( Exception ex )
++                    {
++                        Bukkit.getLogger().log( Level.SEVERE, "Error invoking " + method, ex );
++                    }
++                }
++            }
++        }
++
++        try
++        {
++            config.save( CONFIG_FILE );
++        } catch ( IOException ex )
++        {
++            Bukkit.getLogger().log( Level.SEVERE, "Could not save " + CONFIG_FILE, ex );
++        }
++    }
++
++    private static void set(String path, Object val)
++    {
++        config.set( path, val );
++    }
++
++    private static boolean getBoolean(String path, boolean def)
++    {
++        config.addDefault( path, def );
++        return config.getBoolean( path, config.getBoolean( path ) );
++    }
++
++    private static double getDouble(String path, double def)
++    {
++        config.addDefault( path, def );
++        return config.getDouble( path, config.getDouble( path ) );
++    }
++
++    private static float getFloat(String path, float def)
++    {
++        // TODO: Figure out why getFloat() always returns the default value.
++        return (float) getDouble( path, (double) def );
++    }
++
++    private static int getInt(String path, int def)
++    {
++        config.addDefault( path, def );
++        return config.getInt( path, config.getInt( path ) );
++    }
++
++    private static <T> List getList(String path, T def)
++    {
++        config.addDefault( path, def );
++        return (List<T>) config.getList( path, config.getList( path ) );
++    }
++
++    private static String getString(String path, String def)
++    {
++        config.addDefault( path, def );
++        return config.getString( path, config.getString( path ) );
++    }
++
++    public static boolean saveWorldChunks;
++
++    private static void worlds() {
++        saveWorldChunks = getBoolean("save-world-chunks", false);
++    }
++
+ }
+diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+index f6ed9a86593df5ffa130d9e3d31e37efb8a0780e..48164b9bc032c3def4ad380b3a11a70f5975c8fc 100644
+--- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+@@ -1,22 +1,15 @@
+ package net.minecraft.server;
+ 
+-import com.google.common.collect.Lists;
+ import java.io.IOException;
+-import java.util.ArrayList;
+-import java.util.Collections;
+ import java.util.Iterator;
+ import java.util.List;
+-import java.util.Set;
+-import java.util.concurrent.ConcurrentHashMap;
+ 
+-import it.dbruni.nozzlemc.NozzleServer;
+ import it.dbruni.nozzlemc.configuration.NozzleConfiguration;
+ import org.apache.logging.log4j.LogManager;
+ import org.apache.logging.log4j.Logger;
+ 
+ // CraftBukkit start
+ import java.util.Random;
+-import java.util.logging.Level;
+ 
+ import org.bukkit.Bukkit;
+ import org.bukkit.Server;
+@@ -265,7 +258,7 @@ public class ChunkProviderServer implements IChunkProvider {
+ 
+     public void saveChunkNOP(Chunk chunk) {
+         // Nozzle Start
+-        if (!NozzleServer.settingsManager.getProperty(NozzleConfiguration.SAVE_WORLDS)) return;
++        if (!NozzleConfiguration.saveWorldChunks) return;
+         // Nozzle End
+ 
+         // NMS Start
+@@ -285,7 +278,7 @@ public class ChunkProviderServer implements IChunkProvider {
+ 
+ 
+         if (this.chunkLoader != null) {
+-            if (!NozzleServer.settingsManager.getProperty(NozzleConfiguration.SAVE_WORLDS)) {
++            if (!NozzleConfiguration.saveWorldChunks) {
+                 chunk.setLastSaved(this.world.getTime());
+                 return;
+             }
+diff --git a/src/main/java/net/minecraft/server/DedicatedServer.java b/src/main/java/net/minecraft/server/DedicatedServer.java
+index 088beb22b53ddf77dc182dd5ac39e1086d5279aa..fb1dd62890d35f7b59d3edc28d8e7c7e707c62f9 100644
+--- a/src/main/java/net/minecraft/server/DedicatedServer.java
++++ b/src/main/java/net/minecraft/server/DedicatedServer.java
+@@ -182,6 +182,10 @@ public class DedicatedServer extends MinecraftServer implements IMinecraftServer
+             org.github.paperspigot.PaperSpigotConfig.registerCommands();
+             // PaperSpigot end
+ 
++            //Nozzle Start
++            it.dbruni.nozzlemc.configuration.NozzleConfiguration.init((File) options.valueOf("nozzle-settings"));
++            //Nozzle End
++
+             DedicatedServer.LOGGER.info("Generating keypair");
+             this.a(MinecraftEncryption.b());
+             DedicatedServer.LOGGER.info("Starting Minecraft server on " + (this.getServerIp().length() == 0 ? "*" : this.getServerIp()) + ":" + this.R());
+diff --git a/src/main/java/net/minecraft/server/WorldServer.java b/src/main/java/net/minecraft/server/WorldServer.java
+index ed3ca998c2d7b0b74db7c72b2e6042bf82f4021c..4bfc5db705799bbb8415f778febb9ce4e3b2ff0a 100644
+--- a/src/main/java/net/minecraft/server/WorldServer.java
++++ b/src/main/java/net/minecraft/server/WorldServer.java
+@@ -3,18 +3,14 @@ package net.minecraft.server;
+ import com.google.common.base.Predicate;
+ import com.google.common.collect.Lists;
+ import com.google.common.collect.Maps;
+-import com.google.common.collect.Sets;
+ import com.google.common.util.concurrent.ListenableFuture;
+ import java.util.ArrayList;
+ import java.util.Iterator;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Random;
+-import java.util.Set;
+-import java.util.TreeSet;
+ import java.util.UUID;
+ 
+-import it.dbruni.nozzlemc.NozzleServer;
+ import it.dbruni.nozzlemc.configuration.NozzleConfiguration;
+ import org.apache.logging.log4j.LogManager;
+ import org.apache.logging.log4j.Logger;
+@@ -25,7 +21,6 @@ import java.util.logging.Level;
+ 
+ import org.bukkit.WeatherType;
+ import org.bukkit.block.BlockState;
+-import org.bukkit.craftbukkit.util.LongHash;
+ import org.bukkit.craftbukkit.util.HashTreeSet;
+ 
+ import org.bukkit.event.block.BlockFormEvent;
+@@ -985,7 +980,7 @@ public class WorldServer extends World implements IAsyncTaskHandler {
+ 
+     protected void a() throws ExceptionWorldConflict {
+ 
+-        if (!NozzleServer.settingsManager.getProperty(NozzleConfiguration.SAVE_WORLDS)) return;
++        if (!NozzleConfiguration.saveWorldChunks) return;
+ 
+ 
+         this.checkSession();
+@@ -1132,7 +1127,7 @@ public class WorldServer extends World implements IAsyncTaskHandler {
+     }
+ 
+     public void saveLevel() {
+-        if (!NozzleServer.settingsManager.getProperty(NozzleConfiguration.SAVE_WORLDS)) return;
++        if (!NozzleConfiguration.saveWorldChunks) return;
+ 
+         this.dataManager.a();
+     }
+diff --git a/src/main/java/org/bukkit/craftbukkit/Main.java b/src/main/java/org/bukkit/craftbukkit/Main.java
+index 4fcaa10bd7d436cff1d0eca5f0bbd8ff721ea6d6..16b97bcfab4cf0047675025e5b5fba093719b2c2 100644
+--- a/src/main/java/org/bukkit/craftbukkit/Main.java
++++ b/src/main/java/org/bukkit/craftbukkit/Main.java
+@@ -8,7 +8,6 @@ import java.util.List;
+ import java.util.logging.Level;
+ import java.util.logging.Logger;
+ 
+-import it.dbruni.nozzlemc.NozzleServer;
+ import joptsimple.OptionParser;
+ import joptsimple.OptionSet;
+ import net.minecraft.server.MinecraftServer;
+@@ -20,6 +19,7 @@ public class Main {
+ 
+     public static void main(String[] args) {
+ 
++
+         // Todo: Installation script
+         OptionParser parser = new OptionParser() {
+             {
+@@ -104,6 +104,8 @@ public class Main {
+                         .defaultsTo(new File("bukkit.yml"))
+                         .describedAs("Yml file");
+ 
++
++
+                 acceptsAll(asList("C", "commands-settings"), "File for command settings")
+                         .withRequiredArg()
+                         .ofType(File.class)
+@@ -133,12 +135,18 @@ public class Main {
+                         .defaultsTo(new File("paper.yml"))
+                         .describedAs("Yml file");
+                 // PaperSpigot End
++
++                //Nozzle Start
++                acceptsAll(asList("nozzle", "nozzle-settings", "File for nozzle settings"))
++                        .withRequiredArg()
++                        .ofType(File.class)
++                        .defaultsTo(new File("nozzle.yml"))
++                        .describedAs("Yml file");
+             }
+         };
+ 
+         OptionSet options = null;
+ 
+-        new NozzleServer(new File("nozzle.yml"));
+ 
+         try {
+             options = parser.parse(args);
