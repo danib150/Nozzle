@@ -3,6 +3,7 @@
 <a href="https://github.com/danib150/Nozzle/">
   <img src="https://i.imgur.com/OPiFwX0.png" alt="Nozzle">
 </a>
+</div>
 
 ===========
 
