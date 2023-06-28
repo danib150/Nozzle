@@ -1,4 +1,9 @@
-PaperSpigot
+<div align="center">
+
+<a href="https://github.com/danib150/Nozzle/">
+  <img src="https://i.imgur.com/OPiFwX0.png" alt="Nozzle">
+</a>
+
 ===========
 
 Refreshed version on [PaperSpigot 1.8.8](https://github.com/PaperMC/Paper/tree/ver/1.8.8), rewritten to use *Gradle KTS* and *more modern patches system* based on [PandaSpigot](https://github.com/hpfxd/PandaSpigot). <br>
