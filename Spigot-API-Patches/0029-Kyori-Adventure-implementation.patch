@@ -1,0 +1,200 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Daniele Bruni <67119358+danib150@users.noreply.github.com>
+Date: Wed, 28 Jun 2023 18:06:44 +0200
+Subject: [PATCH] Kyori Adventure implementation
+
+
+diff --git a/build.gradle.kts b/build.gradle.kts
+index cfdc1361618bade1831f11015f6b5d22f7af32c5..d8ca019bb44d0b4a08358a1f4e226016d8e6ab30 100644
+--- a/build.gradle.kts
++++ b/build.gradle.kts
+@@ -4,6 +4,10 @@ java {
+ }
+ 
+ dependencies {
++    //Nozzle Start
++    implementation("net.kyori:adventure-api:4.14.0")
++    implementation("net.kyori:adventure-text-serializer-legacy:4.14.0")
++    //Nozzle End
+     api("commons-lang:commons-lang:2.6")
+     api("org.avaje:ebean:2.8.1")
+     api("com.googlecode.json-simple:json-simple:1.1.1")
+diff --git a/src/main/java/org/bukkit/Server.java b/src/main/java/org/bukkit/Server.java
+index 1b62463a1e18d7e35524e06e791d321d6b3823c0..9c9dab7d7438b4043a075faf5d97fa0e8a1900d7 100644
+--- a/src/main/java/org/bukkit/Server.java
++++ b/src/main/java/org/bukkit/Server.java
+@@ -12,6 +12,7 @@ import java.util.Set;
+ import java.util.UUID;
+ import java.util.logging.Logger;
+ 
++import net.kyori.adventure.text.Component;
+ import org.bukkit.Warning.WarningState;
+ import org.bukkit.command.CommandException;
+ import org.bukkit.command.CommandMap;
+@@ -991,6 +992,18 @@ public interface Server extends PluginMessageRecipient {
+             throw new UnsupportedOperationException("Not supported yet.");
+         }
+ 
++        // Nozzle start
++        /**
++         * Sends an array of components as a single message to the player
++         *
++         * @param components the components to send
++         */
++         
++        public void broadcast(Component components) {
++            throw new UnsupportedOperationException("Not supported yet.");
++        }
++        // Nozzle end
++
+         /**
+          * Restart the server. If the server administrator has not configured restarting, the server will stop.
+          */
+diff --git a/src/main/java/org/bukkit/entity/Player.java b/src/main/java/org/bukkit/entity/Player.java
+index d02fe560016ff38792bbf3f5cb3832d6c5636d8e..810e8e8d8122a1a96a6849eaf1ca45895e352119 100644
+--- a/src/main/java/org/bukkit/entity/Player.java
++++ b/src/main/java/org/bukkit/entity/Player.java
+@@ -2,6 +2,8 @@ package org.bukkit.entity;
+ 
+ import java.net.InetSocketAddress;
+ 
++import net.kyori.adventure.text.Component;
++import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+ import org.bukkit.Achievement;
+ import org.bukkit.ChatColor;
+ import org.bukkit.Effect;
+@@ -1286,6 +1288,12 @@ public interface Player extends HumanEntity, Conversable, CommandSender, Offline
+             throw new UnsupportedOperationException("Not supported yet.");
+         }
+ 
++        /**
++         * Send Kyori Adventure Component
++         */
++        public void sendMessage(Component component) {
++            throw new UnsupportedOperationException("Not supported yet.");
++        }
+         /**
+          * Get whether the player affects mob spawning
+          *
+diff --git a/src/main/java/org/bukkit/scoreboard/Team.java b/src/main/java/org/bukkit/scoreboard/Team.java
+index 0fdcebd91b9e9dabf0f4a63b332005b95e2d9b14..00d6aa1c271a6ec961a6f949c19fdbec3a1f96d1 100644
+--- a/src/main/java/org/bukkit/scoreboard/Team.java
++++ b/src/main/java/org/bukkit/scoreboard/Team.java
+@@ -2,6 +2,7 @@ package org.bukkit.scoreboard;
+ 
+ import java.util.Set;
+ 
++import net.kyori.adventure.text.Component;
+ import org.bukkit.OfflinePlayer;
+ import org.bukkit.potion.PotionEffectType;
+ 
+@@ -46,6 +47,13 @@ public interface Team {
+      */
+     String getPrefix() throws IllegalStateException;
+ 
++    /**
++     * Gets the prefix prepended to the display of entries on this team.
++     *
++     * @return Team prefix
++     * @throws IllegalStateException if this team has been unregistered
++     */
++    Component prefix() throws IllegalStateException;
+     /**
+      * Sets the prefix prepended to the display of entries on this team.
+      *
+@@ -57,6 +65,14 @@ public interface Team {
+      */
+     void setPrefix(String prefix) throws IllegalStateException, IllegalArgumentException;
+ 
++    /**
++     * Gets the suffix appended to the display of entries on this team.
++     *
++     * @return the team's current suffix
++     * @throws IllegalStateException if this team has been unregistered
++     */
++    Component suffix() throws IllegalStateException;
++
+     /**
+      * Gets the suffix appended to the display of entries on this team.
+      *
+@@ -76,6 +92,8 @@ public interface Team {
+      */
+     void setSuffix(String suffix) throws IllegalStateException, IllegalArgumentException;
+ 
++
++
+     /**
+      * Gets the team friendly fire state
+      *
+diff --git a/src/main/java/org/github/paperspigot/Title.java b/src/main/java/org/github/paperspigot/Title.java
+index 27f9bc261ba3007f6c71925b589d550ece9760df..a978af7317c042aa3e5373a1afc2c8199803e69d 100644
+--- a/src/main/java/org/github/paperspigot/Title.java
++++ b/src/main/java/org/github/paperspigot/Title.java
+@@ -1,5 +1,7 @@
+ package org.github.paperspigot;
+ 
++import net.kyori.adventure.text.Component;
++import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+ import net.md_5.bungee.api.chat.BaseComponent;
+ import net.md_5.bungee.api.chat.TextComponent;
+ 
+@@ -107,6 +109,20 @@ public final class Title {
+         this(title, subtitle, DEFAULT_FADE_IN, DEFAULT_STAY, DEFAULT_FADE_OUT);
+     }
+ 
++    //Nozzle Start
++    /**
++     * Create a title with the default time values.
++     * <p>
++     * <p>Times use default values.</p>
++     *
++     * @param title    the main text of the title
++     * @param subtitle the secondary text of the title
++     */
++
++    public Title(Component title, Component subtitle) {
++        this(title, subtitle, DEFAULT_FADE_IN, DEFAULT_STAY, DEFAULT_FADE_OUT);
++    }
++
+     /**
+      * Creates a new title.
+      *
+@@ -169,6 +185,30 @@ public final class Title {
+         );
+     }
+ 
++    //Nozzle Start
++    /**
++     * Creates a new title.
++     * <p>
++     * <p>It is recommended to the {@link BaseComponent} constrctors.</p>
++     *
++     * @param title    the main text of the title
++     * @param subtitle the secondary text of the title
++     * @param fadeIn   the number of ticks for the title to fade in
++     * @param stay     the number of ticks for the title to stay on screen
++     * @param fadeOut  the number of ticks for the title to fade out
++     */
++    public Title(Component title, Component subtitle, int fadeIn, int stay, int fadeOut) {
++        this(
++                LegacyComponentSerializer.legacy(LegacyComponentSerializer.SECTION_CHAR).serialize(checkNotNull(title, "title")),
++                subtitle == null ? null : LegacyComponentSerializer.legacy(LegacyComponentSerializer.SECTION_CHAR).serialize(subtitle),
++                fadeIn,
++                stay,
++                fadeOut
++        );
++    }
++    //Nozzle End
++
++
+     /**
+      * Gets the text of this title
+      *
+@@ -258,6 +298,7 @@ public final class Title {
+             return this;
+         }
+ 
++
+         /**
+          * Sets the title to the given text.
+          * <p>
